@@ -1,3 +1,3 @@
-docker cp ./LLVMAssignment.cpp compiler2.0:/root/assign3
-docker cp ./Liveness.h compiler2.0:/root/assign3
-docker cp ./Dataflow.h compiler2.0:/root/assign3
+docker cp ./LLVMAssignment.cpp compiler2.0:/root/PointerAnalyse
+docker cp ./Liveness.h compiler2.0:/root/PointerAnalyse
+docker cp ./Dataflow.h compiler2.0:/root/PointerAnalyse

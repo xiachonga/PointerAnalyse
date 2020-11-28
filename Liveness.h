@@ -55,7 +55,7 @@ private:
     std::map<CallInst*, std::set<Function*> > finalResult;
 public:
    LivenessVisitor(): functionWorkList(){}
-   std::set<Function* > getFunctionWorkList() {
+   std::set<Function* > &getFunctionWorkList() {
        return functionWorkList;
    }
    void setFunctionWorkList(std::set<Function* > func) {
@@ -110,12 +110,12 @@ public:
             computeLoadInst(loadInst, dfval);
         } else if (CallInst* callInst = dyn_cast<CallInst>(inst)) {
             #ifdef DEBUG
-                errs() << callInst->getName() << "\n";
+                errs() << "===CallInst===" << callInst->getName() << "\n";
             #endif
             computeCallInst(callInst, dfval);
         } else if (ReturnInst* returnInst = dyn_cast<ReturnInst>(inst)) { // call 和 return都会令目标基本块的值发生改变，现在还没想好怎么弄
             #ifdef DEBUG
-                errs() << returnInst->getName() << "\n";
+                errs() << "===ReturnInst===" << returnInst->getName() << "\n";
             #endif
             computeReturnInst(returnInst, dfval);
         } else {

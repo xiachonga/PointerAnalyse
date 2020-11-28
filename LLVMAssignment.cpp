@@ -67,6 +67,7 @@ struct FuncPtrPass : public ModulePass {
        LivenessInfo initval;
        while (!functionWorkList.empty()) {
             Function* F = *(functionWorkList.begin());
+            F->dump();
             functionWorkList.erase(F);
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
             functionWorkList.insert(visitor.getFunctionWorkList().begin(), visitor.getFunctionWorkList().end());
@@ -146,8 +147,8 @@ int main(int argc, char **argv) {
    Passes.add(llvm::createPromoteMemoryToRegisterPass());
 
    /// Your pass to print Function and Call Instructions
-   Passes.add(new Liveness());
-   //Passes.add(new FuncPtrPass());
+   //Passes.add(new Liveness());
+   Passes.add(new FuncPtrPass());
    Passes.run(*M.get());
 #ifndef NDEBUG
    system("pause");

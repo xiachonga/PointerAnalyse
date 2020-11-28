@@ -88,19 +88,17 @@ void compForwardDataflow(Function *fn,
     for(Function::iterator bi = fn->begin(); bi != fn->end(); ++bi) {
         BasicBlock* bb = &*bi;
         result->insert(std::make_pair(bb, std::make_pair(initval, initval)));
-        for (BasicBlock::iterator inst = bb->begin(); inst != bb->end(); ++bb) {
+        workList.insert(bb);
+        for (BasicBlock::iterator inst = bb->begin(); inst != bb->end(); ++inst) {
             if (Instruction* instruction = dyn_cast<Instruction>(inst)) {
                 std::set<Value*> nullSet = {};
                 (*result)[bb].first.PointToSet.insert(std::make_pair(instruction, nullSet));   
             }
         }
-        
-        workList.insert(bb);
     }    
     while(!workList.empty()) {
         BasicBlock *bb = *workList.begin();
         workList.erase(workList.begin());
-
         // Merge all incoming value
         T bbEnterVal = (*result)[bb].first;
         for (auto si = pred_begin(bb), se = pred_end(bb); si != se; si++) {
