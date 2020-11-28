@@ -77,9 +77,12 @@ public:
        return;
    } 
    void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
+
+
        return;
    } 
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
+
        return;
    } 
    void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
@@ -120,7 +123,7 @@ public:
                 errs() << inst->getName() << "\n";
             #endif
         }
-        dfval->LiveVars.erase(inst);
+        //dfval->LiveVars.erase(inst);
         /*for(User::op_iterator oi = inst->op_begin(), oe = inst->op_end();
             oi != oe; ++oi) {
            Value * val = *oi;
