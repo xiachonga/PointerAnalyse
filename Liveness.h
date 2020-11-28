@@ -24,9 +24,9 @@
 using namespace llvm;
 
 using ValueSetType = std::set<Value *>;
-using PointToSetType = std::map<Instruction *, ValueSetType>;
+using PointToSetType = std::map<Value *, ValueSetType>;
 
-#define DEBUG
+//#define DEBUG
 struct LivenessInfo {
    std::set<Instruction *> LiveVars;             /// Set of variables which are live
    PointToSetType PointToSet;
@@ -53,6 +53,7 @@ class LivenessVisitor : public DataflowVisitor<struct LivenessInfo> {
 private:
     std::set<Function* > functionWorkList;
     std::map<CallInst*, std::set<Function*> > finalResult;
+    std::map<Function*, LivenessInfo> functionArgPointSet;
 public:
    LivenessVisitor(): functionWorkList(){}
    std::set<Function* > &getFunctionWorkList() {
@@ -60,6 +61,9 @@ public:
    }
    void setFunctionWorkList(std::set<Function* > func) {
        this->functionWorkList = func;
+   }
+   std::map<Function*, LivenessInfo> getFunctionArgPointSet() {
+       return functionArgPointSet;
    }
    std::map<CallInst*, std::set<Function*> > getFinalResult() {
        return finalResult;
@@ -77,8 +81,10 @@ public:
        return;
    } 
    void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
-
-
+       storeInst->dump();
+       for (User::op_iterator iter = storeInst->op_begin(); iter != storeInst->op_end(); ++iter) {
+           (*iter)->dump();
+       }
        return;
    } 
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
@@ -86,6 +92,20 @@ public:
        return;
    } 
    void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
+       Value* value = callInst->getCalledValue();
+       value->dump();
+       /*for (Use& U : callInst->args()) {
+               U.get()->dump();
+           }*/ 
+       if (Function* func = dyn_cast<Function>(value)) {
+           std::set<Function* > funcSet = {func};
+           functionWorkList.insert(func);
+           
+           finalResult.insert(std::make_pair(callInst, funcSet));
+       } else if (value->getType()->isPointerTy()){
+           //value->dump();
+           
+       }
        return;
    } 
    void computeReturnInst(ReturnInst* returnInst, LivenessInfo* dfval) {
@@ -93,12 +113,14 @@ public:
    } 
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
+        //inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
                 errs() << phiNode->getName() << "\n";
             #endif
             computePhiNode(phiNode, dfval);
         } else if (StoreInst* storeInst = dyn_cast<StoreInst>(inst)) {
+            storeInst->dump();
             #ifdef DEBUG
                 errs() << storeInst->getName() << "\n";
             #endif

@@ -67,8 +67,11 @@ struct FuncPtrPass : public ModulePass {
        LivenessInfo initval;
        while (!functionWorkList.empty()) {
             Function* F = *(functionWorkList.begin());
-            F->dump();
             functionWorkList.erase(F);
+            std::map<Function*, LivenessInfo> funcArgPointSet = visitor.getFunctionArgPointSet();
+            if (funcArgPointSet.count(F)) {
+                initval = funcArgPointSet[F];
+            }
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
             functionWorkList.insert(visitor.getFunctionWorkList().begin(), visitor.getFunctionWorkList().end());
             std::set<Function* > funcSet = {};
@@ -151,7 +154,7 @@ int main(int argc, char **argv) {
    Passes.add(new FuncPtrPass());
    Passes.run(*M.get());
 #ifndef NDEBUG
-   system("pause");
+   //system("pause");
 #endif
 }
 

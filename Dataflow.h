@@ -18,7 +18,7 @@
 
 using namespace llvm;
 
-#define DEBUG
+//#define DEBUG
 ///Base dataflow visitor class, defines the dataflow function
 
 template <class T>
@@ -83,11 +83,11 @@ void compForwardDataflow(Function *fn,
     DataflowVisitor<T> *visitor,
     typename DataflowResult<T>::Type *result,
     const T & initval) {
-    
+    T initNull;
     std::set<BasicBlock *> workList;
     for(Function::iterator bi = fn->begin(); bi != fn->end(); ++bi) {
         BasicBlock* bb = &*bi;
-        result->insert(std::make_pair(bb, std::make_pair(initval, initval)));
+        result->insert(std::make_pair(bb, std::make_pair(initNull, initNull)));
         workList.insert(bb);
         for (BasicBlock::iterator inst = bb->begin(); inst != bb->end(); ++inst) {
             if (Instruction* instruction = dyn_cast<Instruction>(inst)) {
@@ -95,7 +95,8 @@ void compForwardDataflow(Function *fn,
                 (*result)[bb].first.PointToSet.insert(std::make_pair(instruction, nullSet));   
             }
         }
-    }    
+    }
+    result->insert(std::make_pair(&*fn->begin(), std::make_pair(initval, initNull)));    
     while(!workList.empty()) {
         BasicBlock *bb = *workList.begin();
         workList.erase(workList.begin());
