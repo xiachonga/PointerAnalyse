@@ -32,6 +32,8 @@
 
 #include "Liveness.h"
 #include "Dataflow.h"
+
+#define DEBUG
 using namespace llvm;
 static ManagedStatic<LLVMContext> GlobalContext;
 static LLVMContext &getGlobalContext() { return *GlobalContext; }

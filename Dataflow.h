@@ -18,6 +18,7 @@
 
 using namespace llvm;
 
+#define DEBUG
 ///Base dataflow visitor class, defines the dataflow function
 
 template <class T>
