@@ -182,7 +182,10 @@ public:
    } 
    void computeReturnInst(ReturnInst* returnInst, LivenessInfo* dfval) {
        return;
-   } 
+   }
+   void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
+       
+   }
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
         inst->dump();
@@ -212,7 +215,13 @@ public:
                 errs() << "===ReturnInst===" << returnInst->getName() << "\n";
             #endif
             computeReturnInst(returnInst, dfval);
-        } else {
+        } else if (GetElementPtrInst* getElementPtrInst = dyn_cast<GetElementPtrInst>(inst)) {
+            #ifdef DEBUG
+                errs() << "===GetElementPtrInst===" << getElementPtrInst->getName() << "\n";
+            #endif
+            computeGetElementPtrInst(getElementPtrInst, dfval);
+        } 
+        else {
             #ifdef DEBUG
                 errs() << inst->getName() << "\n";
             #endif
