@@ -96,7 +96,7 @@ void compForwardDataflow(Function *fn,
             }
         }
     }
-    result->insert(std::make_pair(&*fn->begin(), std::make_pair(initval, initNull)));    
+    (*result)[*workList.begin()].first = initval;    
     while(!workList.empty()) {
         BasicBlock *bb = *workList.begin();
         workList.erase(workList.begin());
