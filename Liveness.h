@@ -39,7 +39,7 @@ struct LivenessInfo {
    // An argument that has more than one possible value
    std::map<Value *, std::set<Value *>> PVM;
 
-   LivenessInfo() : PointToSet() {}
+   LivenessInfo() : PointToSet(), PVM() {}
    LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
   
    bool operator == (const LivenessInfo & info) const {
@@ -114,8 +114,10 @@ public:
        PVM[pointedValue].insert(PVM[value].begin(), PVM[value].end());
      }
 */
+     #ifdef DEBUG
      errs() << ">>>>> store\n";
      storeInst->dump();
+     #endif
      Value *value = storeInst->getValueOperand();
      Value *pointer = storeInst->getPointerOperand();
      PointToSetType &pointToSet = dfval->PointToSet;
@@ -137,8 +139,10 @@ public:
        PVM[loadInst].insert(PVM[pointedValue].begin(), PVM[pointedValue].end());
      }
 */
+     #ifdef DEBUG   
      errs() << ">>>>> load\n";
      loadInst->dump();
+     #endif
        Value *pointer = loadInst->getPointerOperand();
        PointToSetType &pointToSet = dfval->PointToSet;
        pointToSet[loadInst] = {};
@@ -281,8 +285,10 @@ public:
    }
 
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
+     #ifdef DEBUG 
      errs() << ">>>>> ptr\n";
      getElementPtrInst->dump();
+     #endif
      PointToSetType &pointToSet = dfval->PointToSet;
      Value *pointer = getElementPtrInst->getPointerOperand();
      if (isa<AllocaInst>(pointer))
@@ -293,7 +299,7 @@ public:
    }
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
-//        inst->dump();
+        inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
                 errs() << phiNode->getName() << "\n";

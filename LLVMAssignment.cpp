@@ -84,6 +84,7 @@ struct FuncPtrPass : public ModulePass {
        PrintResult(visitor.getFinalResult());
        return false; 
     }
+    
     void PrintResult(std::map<CallInst*, std::set<Function*> > Result) {
         unsigned int line = 0;
 		int flag = 0;
