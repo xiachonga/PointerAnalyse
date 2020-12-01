@@ -25,11 +25,20 @@ using namespace llvm;
 
 using ValueSetType = std::set<Value *>;
 using PointToSetType = std::map<Value *, ValueSetType>;
+using ValueValuesMapType = std::map<Value *, ValueSetType>;
 
 //#define DEBUG
 struct LivenessInfo {
    std::set<Instruction *> LiveVars;             /// Set of variables which are live
+
+   // Point To Value Map
+   // Pointer and value it points to
    PointToSetType PointToSet;
+   // Possible Value Map
+   // A instruction (phiNode or load) have more than one possible result
+   // An argument that has more than one possible value
+   std::map<Value *, std::set<Value *>> PVM;
+
    LivenessInfo() : PointToSet() {}
    LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
   
@@ -89,44 +98,46 @@ public:
    }
 
    void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
+/* 
+     Value *value = storeInst->getValueOperand();  // Value to store
+     Value *pointer = storeInst->getPointerOperand(); // Address where to store
+     PointToSetType &pointToSet = dfval->PointToSet;
+     ValueValuesMapType &PVM = dfval->PVM;
+     if (pointToSet[pointer].size() == 1) {
+       Value *pointedValue = *pointToSet[pointer].begin();
+       PVM[pointedValue] = PVM[value];
+       return;
+     }
+     for (Value *pointedValue : pointToSet[pointer]) {
+       PVM[pointedValue].insert(PVM[value].begin(), PVM[value].end());
+     }
+*/
+     errs() << ">>>>> store\n";
+     storeInst->dump();
      Value *value = storeInst->getValueOperand();
      Value *pointer = storeInst->getPointerOperand();
-     /*if (GetElementPtrInst *getElementPtrInst = dyn_cast<GetElementPtrInst>(pointer)){
-       errs() << ">>>>> store\n";
-       pointer->dump();
      PointToSetType &pointToSet = dfval->PointToSet;
-     for (Value *pointerValue : pointToSet[pointer]){
-       //pointToSet[pointerValue] = pointToSet[value];
-       pointToSet[pointerValue].insert(value);
-         errs() << pointerValue << " " << pointToSet[pointerValue].size();
-       pointerValue->dump();
-     }
-       errs() << ">>>>>\n";
-     return;
-     }*/
-     PointToSetType &pointToSet = dfval->PointToSet;
-     if (pointToSet[pointer].size() == 1)
+     if (pointToSet[pointer].size() == 1) {
+       Value *pointerValue = *pointToSet[pointer].begin();
        pointToSet[pointerValue] = {value};
+       return;
+     }
      for (Value *pointerValue : pointToSet[pointer]){
        pointToSet[pointerValue].insert(value);
      }
+
    }
 
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
+/*     Value *pointer = storeInst->getPointerOperand(); // Address where load from
+     ValueValuesMapType &PVM = dfval->PVM;
+     for (Value *pointedValue : pointToSet[pointer]){
+       PVM[loadInst].insert(PVM[pointedValue].begin(), PVM[pointedValue].end());
+     }
+*/
+     errs() << ">>>>> load\n";
+     loadInst->dump();
        Value *pointer = loadInst->getPointerOperand();
-     /*if (GetElementPtrInst *getElementPtrInst = dyn_cast<GetElementPtrInst>(pointer)){
-       errs() << ">>>>> load\n";
-       pointer->dump();
-       PointToSetType &pointToSet = dfval->PointToSet;
-       pointToSet[loadInst] = {};
-       ValueSetType &valueSet = pointToSet[loadInst];
-       for (Value *pointerValue : pointToSet[pointer]) {
-         errs() << pointerValue << " " << pointToSet[pointerValue].size();
-         pointerValue->dump();
-         valueSet.insert(pointToSet[pointerValue].begin(), pointToSet[pointerValue].end());
-       }
-       errs() << ">>>>>\n";
-     }*/
        PointToSetType &pointToSet = dfval->PointToSet;
        pointToSet[loadInst] = {};
        ValueSetType &valueSet = pointToSet[loadInst];
@@ -218,23 +229,25 @@ public:
    }
 
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
-/*      errs() << ">>>>> " << getElementPtrInst->getNumIndices() << " " << getElementPtrInst->getPointerAddressSpace() << " " << getElementPtrInst->getAddressSpace()  << '\n';
-      getElementPtrInst->dump();
-      getElementPtrInst->getPointerOperand()->dump();
-      errs() << "<<<<<\n";*/
+     errs() << ">>>>> ptr\n";
+     getElementPtrInst->dump();
      PointToSetType &pointToSet = dfval->PointToSet;
-     pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
+     Value *pointer = getElementPtrInst->getPointerOperand();
+     if (isa<AllocaInst>(pointer))
+       pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
+     else {
+       pointToSet[getElementPtrInst] = pointToSet[pointer];
+     }
    }
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
-        inst->dump();
+//        inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
                 errs() << phiNode->getName() << "\n";
             #endif
             computePhiNode(phiNode, dfval);
         } else if (StoreInst* storeInst = dyn_cast<StoreInst>(inst)) {
-            storeInst->dump();
             #ifdef DEBUG
                 errs() << storeInst->getName() << "\n";
             #endif
