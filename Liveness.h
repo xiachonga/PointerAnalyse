@@ -89,18 +89,27 @@ public:
         errs() << dfval->PointToSet.count(phiNode)<<"\n";
         errs() << dfval->PointToSet[phiNode].size()<<"\n";
        return;
-   } 
-   void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
-       storeInst->dump();
-       for (User::op_iterator iter = storeInst->op_begin(); iter != storeInst->op_end(); ++iter) {
-           (*iter)->dump();
-       }
-       return;
-   } 
-   void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
+   }
 
-       return;
-   } 
+   void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
+     Value *value = storeInst->getValueOperand();
+     Value *pointer = storeInst->getPointerOperand();
+     PointToSetType &pointToSet = dfval->PointToSet;
+     for (Value *pointerValue : pointToSet[pointer]){
+       pointToSet[pointerValue] = pointToSet[value];
+     }
+   }
+
+   void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
+       Value *pointer = loadInst->getPointerOperand();
+       PointToSetType &pointToSet = dfval->PointToSet;
+       pointToSet[loadInst] = {};
+       ValueSetType &valueSet = pointToSet[loadInst];
+       for (Value *pointerValue : pointToSet[pointer]){
+         valueSet.insert(pointToSet[pointerValue].begin(), pointToSet[pointerValue].end());
+       }
+   }
+
    void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
        Value* value = callInst->getCalledValue();
        //value->dump();
