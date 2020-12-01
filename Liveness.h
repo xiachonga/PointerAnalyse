@@ -37,7 +37,7 @@ struct LivenessInfo {
    // Possible Value Map
    // A instruction (phiNode or load) have more than one possible result
    // An argument that has more than one possible value
-   std::map<Value *, std::set<Value *>> PVM;
+   ValueValuesMapType PVM;
 
    LivenessInfo() : PointToSet() {}
    LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
@@ -79,28 +79,27 @@ public:
    std::map<CallInst*, std::set<Function*> > getFinalResult() {
        return finalResult;
    }
+
    void merge(LivenessInfo * dest, const LivenessInfo & src) override {
-       for(auto iter = src.PointToSet.begin(); iter != src.PointToSet.end(); ++iter) {
-           if (dest->PointToSet.find(iter->first) != dest->PointToSet.end()) {
-               dest->PointToSet[iter->first].insert(iter->second.begin(), iter->second.end());
-           } else {
-               dest->PointToSet.insert(std::make_pair(iter->first, iter->second));
-           }
-       }
-   }
-   void computePhiNode(PHINode* phiNode, LivenessInfo* dfval) {
-       ValueSetType valueTempSet = {};
-       for (Use &U : phiNode->incoming_values()) {
-            //U.get()->dump();
-            valueTempSet.insert(U.get());
-		}
-        //dfval->PointToSet.insert(std::make_pair(phiNode, valueTempSet));
-        dfval->PointToSet[phiNode] = valueTempSet;
-       return;
+     ValueValuesMapType &PVM = dest->PVM;
+     for (auto VVs : src.PVM) {
+        PVM[VVs.first].insert(VVs.second.begin(), VVs.second.end());
+     }
+     PointToSetType &pointToSet = dest->PointToSet;
+     for (auto VVs : src.PointToSet){
+        pointToSet[VVs.first].insert(VVs.second.begin(), VVs.second.end());
+     }
    }
 
-   void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
-/* 
+   void computePhiNode(PHINode* phiNode, LivenessInfo* dfval) {
+     ValueValuesMapType &PVM = dfval->PVM;
+     for (Use &U : phiNode->incoming_values()) {
+       Value *V = U.get();
+       PVM[phiNode].insert(PVM[V].begin(), PVM[V].end());
+     }
+   }
+
+   void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) { 
      Value *value = storeInst->getValueOperand();  // Value to store
      Value *pointer = storeInst->getPointerOperand(); // Address where to store
      PointToSetType &pointToSet = dfval->PointToSet;
@@ -113,7 +112,7 @@ public:
      for (Value *pointedValue : pointToSet[pointer]) {
        PVM[pointedValue].insert(PVM[value].begin(), PVM[value].end());
      }
-*/
+/*
      errs() << ">>>>> store\n";
      storeInst->dump();
      Value *value = storeInst->getValueOperand();
@@ -127,16 +126,17 @@ public:
      for (Value *pointerValue : pointToSet[pointer]){
        pointToSet[pointerValue].insert(value);
      }
-
+*/
    }
 
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
-/*     Value *pointer = storeInst->getPointerOperand(); // Address where load from
+     Value *pointer = loadInst->getPointerOperand(); // Address where load from
+     PointToSetType &pointToSet = dfval->PointToSet;
      ValueValuesMapType &PVM = dfval->PVM;
      for (Value *pointedValue : pointToSet[pointer]){
        PVM[loadInst].insert(PVM[pointedValue].begin(), PVM[pointedValue].end());
      }
-*/
+/*
      errs() << ">>>>> load\n";
      loadInst->dump();
        Value *pointer = loadInst->getPointerOperand();
@@ -146,6 +146,7 @@ public:
        for (Value *pointerValue : pointToSet[pointer]) {
          valueSet.insert(pointToSet[pointerValue].begin(), pointToSet[pointerValue].end());
        }
+*/
    }
 
    void handleFunctionArgs(CallInst* callInst, Function* func, LivenessInfo* dfval) {
@@ -276,21 +277,16 @@ public:
    }
 
    void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
-     PointToSetType &pointToSet = dfval->PointToSet;
-     pointToSet[allocaInst] = {};
+     ValueValuesMapType &PVM = dfval->PVM;
+     PVM[allocaInst] = {allocaInst};
    }
 
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
-     errs() << ">>>>> ptr\n";
-     getElementPtrInst->dump();
-     PointToSetType &pointToSet = dfval->PointToSet;
-     Value *pointer = getElementPtrInst->getPointerOperand();
-     if (isa<AllocaInst>(pointer))
-       pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
-     else {
-       pointToSet[getElementPtrInst] = pointToSet[pointer];
-     }
+     Value *pointer = getElementPtrInst->getPointerOperand(); // pointer, ignore offset. TO FIX
+     ValueValuesMapType &PVM = dfval->PVM;
+     PVM[getElementPtrInst] = PVM[pointer]; // copy
    }
+
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
 //        inst->dump();
