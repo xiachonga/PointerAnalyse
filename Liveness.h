@@ -217,7 +217,7 @@ public:
                ValueSetType PointSet = dfval->PointToSet[value];
                for(ValueSetType::iterator iter = PointSet.begin(); iter != PointSet.end(); ++iter) {
                    if (Function* funcTemp = dyn_cast<Function>(*iter)) {
-                       #ifdef
+                       #ifdef DEBUG
                        errs() << "=============" << "\n";
                        funcTemp->dump();
                        #endif
