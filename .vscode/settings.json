@@ -7,6 +7,10 @@
         "chrono": "cpp",
         "map": "cpp",
         "set": "cpp",
-        "unordered_map": "cpp"
+        "unordered_map": "cpp",
+        "deque": "cpp",
+        "functional": "cpp",
+        "string": "cpp",
+        "vector": "cpp"
     }
 }

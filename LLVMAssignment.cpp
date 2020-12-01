@@ -60,6 +60,9 @@ struct FuncPtrPass : public ModulePass {
 
     bool runOnModule(Module &M) override {
        for (Module::iterator fn = M.begin(); fn != M.end(); ++fn) {
+           if ((&*fn)->isIntrinsic()) {
+                continue;
+           }
            functionWorkList.insert(&*fn);
        }
        LivenessVisitor visitor;

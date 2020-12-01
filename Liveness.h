@@ -80,18 +80,15 @@ public:
    void computePhiNode(PHINode* phiNode, LivenessInfo* dfval) {
        ValueSetType valueTempSet = {};
        for (Use &U : phiNode->incoming_values()) {
-            U.get()->dump();
+            //U.get()->dump();
             valueTempSet.insert(U.get());
 		}
-        errs() <<valueTempSet.size()<<"\n";
         //dfval->PointToSet.insert(std::make_pair(phiNode, valueTempSet));
         dfval->PointToSet[phiNode] = valueTempSet;
-        errs() << dfval->PointToSet.count(phiNode)<<"\n";
-        errs() << dfval->PointToSet[phiNode].size()<<"\n";
        return;
    } 
    void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
-       storeInst->dump();
+       //storeInst->dump();
        for (User::op_iterator iter = storeInst->op_begin(); iter != storeInst->op_end(); ++iter) {
            (*iter)->dump();
        }
@@ -100,52 +97,61 @@ public:
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
 
        return;
+   }
+
+   void handleFunctionArgs(CallInst* callInst, Function* func, LivenessInfo* dfval) {
+        int i = 0;
+        for (Use& U : callInst->args()) {
+            if (Function * funcArg = dyn_cast<Function>(U.get())) { 
+                #ifdef DEBUG
+                U.get()->dump();
+                errs() << funcArg->getName()<<"\n";
+                func->getArg(i)->dump();
+                #endif
+                Argument * arg = func->getArg(i);
+                if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
+                    ValueSetType pointSet = {funcArg};
+                    LivenessInfo info;
+                    info.PointToSet.insert(std::make_pair(arg, pointSet)); 
+                    functionArgPointSet.insert(std::make_pair(func, info)); 
+                } else {
+                    functionArgPointSet[func].PointToSet[arg].insert(funcArg);
+                }
+                   
+            } else {
+                #ifdef DEBUG 
+                errs()<<"=======else======"<<"\n";
+                U.get()->dump();
+                #endif
+                if (dfval->PointToSet.count(U.get()) != 0) {
+                    ValueSetType pointSet = dfval->PointToSet[U.get()];
+                    Argument * arg = func->getArg(i);
+                    if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
+                        LivenessInfo info;
+                        info.PointToSet.insert(std::make_pair(arg, pointSet)); 
+                        functionArgPointSet.insert(std::make_pair(func, info)); 
+                    } else {
+                        functionArgPointSet[func].PointToSet[arg].insert(pointSet.begin(), pointSet.end());
+                    }
+                }
+            }
+            ++i;
+        } 
+       return;
    } 
    void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
        Value* value = callInst->getCalledValue();
        //value->dump();
        
        if (Function* func = dyn_cast<Function>(value)) {
+           if (func->isIntrinsic()) {
+               return;
+           }
            std::set<Function* > funcSet = {func};
            functionWorkList.insert(func);
-           
            finalResult.insert(std::make_pair(callInst, funcSet));
-           int i = 0;
-           for (Use& U : callInst->args()) {
-               if (Function * funcArg = dyn_cast<Function>(U.get())) { 
-                   #ifdef DEBUG
-                   U.get()->dump();
-                   errs() << funcArg->getName()<<"\n";
-                   func->getArg(i)->dump();
-                   #endif
-                   Argument * arg = func->getArg(i);
-                   if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
-                       ValueSetType pointSet = {funcArg};
-                       LivenessInfo info;
-                       info.PointToSet.insert(std::make_pair(arg, pointSet)); 
-                       functionArgPointSet.insert(std::make_pair(func, info)); 
-                   } else {
-                       functionArgPointSet[func].PointToSet[arg].insert(funcArg);
-                   }
-                   
-               } else { 
-                    errs()<<"=======else======"<<"\n";
-                    U.get()->dump();
-                    if (dfval->PointToSet.count(U.get()) != 0) {
-                        ValueSetType pointSet = dfval->PointToSet[U.get()];
-                        errs()<< dfval->PointToSet[U.get()].size() <<"\n";
-                        Argument * arg = func->getArg(i);
-                        if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
-                            LivenessInfo info;
-                            info.PointToSet.insert(std::make_pair(arg, pointSet)); 
-                            functionArgPointSet.insert(std::make_pair(func, info)); 
-                        } else {
-                            functionArgPointSet[func].PointToSet[arg].insert(pointSet.begin(), pointSet.end());
-                        }
-                    }
-               }
-               ++i;
-           } 
+           handleFunctionArgs(callInst, func, dfval);
+
        } else {
            #ifdef DEBUG
            errs() << "value is a function pointer" << "\n";
@@ -158,6 +164,7 @@ public:
                    if (Function* funcTemp = dyn_cast<Function>(*iter)) {
                        functionWorkList.insert(funcTemp);
                        funcSet.insert(funcTemp);
+                       handleFunctionArgs(callInst, funcTemp, dfval);
                    }
                }
                finalResult.insert(std::make_pair(callInst, funcSet));
