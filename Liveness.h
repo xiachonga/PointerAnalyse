@@ -63,6 +63,8 @@ private:
     std::set<Function* > functionWorkList;
     std::map<CallInst*, std::set<Function*> > finalResult;
     std::map<Function*, LivenessInfo> functionArgPointSet;
+    std::map<Function*, std::set<CallInst*> > callfunction;
+    PointToSetType returnPointSet;
 public:
    LivenessVisitor(): functionWorkList(){}
    std::set<Function* > &getFunctionWorkList() {
@@ -197,6 +199,11 @@ public:
            std::set<Function* > funcSet = {func};
            functionWorkList.insert(func);
            finalResult.insert(std::make_pair(callInst, funcSet));
+           if (callfunction.count(func) == 0) {
+               callfunction[func] = {callInst};
+           } else {
+               callfunction[func].insert(callInst);
+           }    
            handleFunctionArgs(callInst, func, dfval);
 
        } else {
@@ -204,22 +211,67 @@ public:
            errs() << "value is a function pointer" << "\n";
            value->dump();
            #endif
+           dfval->PointToSet[value].insert(returnPointSet[value].begin(), returnPointSet[value].end());
            if (dfval->PointToSet.count(value) != 0) {
                std::set<Function* > funcSet = {};
                ValueSetType PointSet = dfval->PointToSet[value];
                for(ValueSetType::iterator iter = PointSet.begin(); iter != PointSet.end(); ++iter) {
                    if (Function* funcTemp = dyn_cast<Function>(*iter)) {
+                       #ifdef
+                       errs() << "=============" << "\n";
+                       funcTemp->dump();
+                       #endif
                        functionWorkList.insert(funcTemp);
                        funcSet.insert(funcTemp);
+                       if (callfunction.count(funcTemp) == 0) {
+                            callfunction[funcTemp] = {callInst};
+                        } else {
+                            callfunction[funcTemp].insert(callInst);
+                        } 
                        handleFunctionArgs(callInst, funcTemp, dfval);
                    }
                }
-               finalResult.insert(std::make_pair(callInst, funcSet));
+               finalResult[callInst] = funcSet;
            }
        }
        return;
    } 
    void computeReturnInst(ReturnInst* returnInst, LivenessInfo* dfval) {
+       //存函数可能有哪些callInst调用，然后根据函数找这些callInst，
+       #ifdef DEBUG
+       errs() << "======computeReturnInst begin========" <<"\n";
+       returnInst->dump();
+       returnInst->getParent()->dump();
+       returnInst->getReturnValue()->dump();
+       errs() << "======computeReturnInst end========" <<"\n";
+       #endif
+       if (Function* funcTemp = dyn_cast<Function>(returnInst->getParent()->getParent())) {
+           if (callfunction.count(funcTemp) != 0) {
+               std::set<CallInst* > tempCallSet = callfunction[funcTemp];
+               Value* returnValue = returnInst->getReturnValue();
+               for(std::set<CallInst* >::iterator iter = tempCallSet.begin(); iter != tempCallSet.end(); ++iter) {
+                   if (dfval->PointToSet.count(returnValue) != 0) {
+                       errs() <<"======returnFunction begin======"<<"\n";
+                       funcTemp->dump();
+                       (*iter)->dump();
+                       errs() <<"======returnFunction end======"<<"\n";
+                       ValueSetType tempReturnValueSet = dfval->PointToSet[returnValue];
+                       (*tempReturnValueSet.begin())->dump();
+                       //dfval->PointToSet[*iter].insert(tempReturnValueSet.begin(), tempReturnValueSet.end());
+                       unsigned int size = returnPointSet[*iter].size();
+                       errs() << size << "\n";
+                       returnPointSet[*iter].insert(tempReturnValueSet.begin(), tempReturnValueSet.end());
+                       errs() << returnPointSet[*iter].size() <<"\n";
+                       if (size != returnPointSet[*iter].size()) { //TODO
+                            if (Function* recomputeFunction = dyn_cast<Function>((*iter)->getParent()->getParent())) {
+                                recomputeFunction->dump();
+                                functionWorkList.insert(recomputeFunction);
+                            }
+                       }
+                   }
+               }
+           }
+       }
        return;
    }
 
