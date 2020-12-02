@@ -29,18 +29,21 @@ using ValueValuesMapType = std::map<Value *, ValueSetType>;
 
 //#define DEBUG
 struct LivenessInfo {
-   std::set<Instruction *> LiveVars;             /// Set of variables which are live
-
    // Point To Value Map
    // Pointer and value it points to
    PointToSetType PointToSet;
-   // Possible Value Map
-   // A instruction (phiNode or load) have more than one possible result
-   // An argument that has more than one possible value
-   //std::map<Value *, std::set<Value *>> PVM;
 
    LivenessInfo() : PointToSet() {}
    LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
+
+   inline ValueSetType getPossibleValues(Value *V){
+     if (isa<Function>(V) || isa<AllocaInst>(V)) return {V};
+     return PointToSet[V];
+   }
+
+   ValueSetType &operator[](Value *V){
+     return PointToSet[V];
+   }
   
    bool operator == (const LivenessInfo & info) const {
        return PointToSet == info.PointToSet;
@@ -48,12 +51,6 @@ struct LivenessInfo {
 };
 
 inline raw_ostream &operator<<(raw_ostream &out, const LivenessInfo &info) {
-    for (std::set<Instruction *>::iterator ii=info.LiveVars.begin(), ie=info.LiveVars.end();
-         ii != ie; ++ ii) {
-       const Instruction * inst = *ii;
-       out << inst->getName();
-       out << " ";
-    }
     return out;
 }
 
@@ -89,80 +86,52 @@ public:
        }
    }
    void computePhiNode(PHINode* phiNode, LivenessInfo* dfval) {
-       ValueSetType valueTempSet = {};
-       for (Use &U : phiNode->incoming_values()) {
-            //U.get()->dump();
-            valueTempSet.insert(U.get());
-		}
-        //dfval->PointToSet.insert(std::make_pair(phiNode, valueTempSet));
-        dfval->PointToSet[phiNode] = valueTempSet;
-       return;
+      PointToSetType &pointToSet = dfval->PointToSet;
+      for (Use &U : phiNode->incoming_values()) {
+          ValueSetType possibleValues = dfval->getPossibleValues(U.get());
+          (*dfval)[phiNode].insert(possibleValues.begin(), possibleValues.end());
+		  }
    }
 
    void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
-/* 
-     Value *value = storeInst->getValueOperand();  // Value to store
-     Value *pointer = storeInst->getPointerOperand(); // Address where to store
+     Value *valueOp = storeInst->getValueOperand();
+     ValueSetType possibleValues = dfval->getPossibleValues(valueOp);
+     Value *pointerOp = storeInst->getPointerOperand();
+     ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
+  
      PointToSetType &pointToSet = dfval->PointToSet;
-     ValueValuesMapType &PVM = dfval->PVM;
-     if (pointToSet[pointer].size() == 1) {
-       Value *pointedValue = *pointToSet[pointer].begin();
-       PVM[pointedValue] = PVM[value];
-       return;
-     }
-     for (Value *pointedValue : pointToSet[pointer]) {
-       PVM[pointedValue].insert(PVM[value].begin(), PVM[value].end());
-     }
-*/
-     errs() << ">>>>> store\n";
-     storeInst->dump();
-     Value *value = storeInst->getValueOperand();
-     Value *pointer = storeInst->getPointerOperand();
-     PointToSetType &pointToSet = dfval->PointToSet;
-     if (pointToSet[pointer].size() == 1) {
-       Value *pointerValue = *pointToSet[pointer].begin();
-       pointToSet[pointerValue] = {value};
-       return;
-     }
-     for (Value *pointerValue : pointToSet[pointer]){
-       pointToSet[pointerValue].insert(value);
-     }
 
+     if (possiblePointers.size() == 1){
+       Value *pointer = *possiblePointers.begin();
+       pointToSet[pointer] = possibleValues;
+       return;
+     }
+     for (Value *pointer : possiblePointers){
+       pointToSet[pointer].insert(possibleValues.begin(), possibleValues.end());
+     }
    }
 
    void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
-/*     Value *pointer = storeInst->getPointerOperand(); // Address where load from
-     ValueValuesMapType &PVM = dfval->PVM;
-     for (Value *pointedValue : pointToSet[pointer]){
-       PVM[loadInst].insert(PVM[pointedValue].begin(), PVM[pointedValue].end());
-     }
-*/
-     errs() << ">>>>> load\n";
-     loadInst->dump();
-       Value *pointer = loadInst->getPointerOperand();
-       PointToSetType &pointToSet = dfval->PointToSet;
-       pointToSet[loadInst] = {};
-       ValueSetType &valueSet = pointToSet[loadInst];
-       for (Value *pointerValue : pointToSet[pointer]) {
-         valueSet.insert(pointToSet[pointerValue].begin(), pointToSet[pointerValue].end());
-       }
-   }
-    void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
+     Value *pointerOp = loadInst->getPointerOperand();
+     ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
+
      PointToSetType &pointToSet = dfval->PointToSet;
-     pointToSet[allocaInst] = {};
+
+     for (Value *pointer : possiblePointers){
+       ValueSetType &possibleValues = pointToSet[pointer];
+       pointToSet[loadInst].insert(possibleValues.begin(), possibleValues.end());
+     }
    }
 
+  void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
+  }
+
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
-     errs() << ">>>>> ptr\n";
-     getElementPtrInst->dump();
      PointToSetType &pointToSet = dfval->PointToSet;
-     Value *pointer = getElementPtrInst->getPointerOperand();
-     if (isa<AllocaInst>(pointer))
-       pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
-     else {
-       pointToSet[getElementPtrInst] = pointToSet[pointer];
-     }
+     Value *pointerOp = getElementPtrInst->getPointerOperand();
+     pointToSet[getElementPtrInst] = dfval->getPossibleValues(pointerOp);
    }
+
    void handleFunctionArgs(CallInst* callInst, Function* func, LivenessInfo* dfval) {
         int i = 0;
         for (Use& U : callInst->args()) {
@@ -205,7 +174,6 @@ public:
    } 
    void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
        Value* value = callInst->getCalledValue();
-       //value->dump();
        
        if (Function* func = dyn_cast<Function>(value)) {
            if (func->isIntrinsic()) {
