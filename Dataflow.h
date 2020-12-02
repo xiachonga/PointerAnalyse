@@ -96,8 +96,6 @@ void compForwardDataflow(Function *fn,
             }
         }
     }
-    std::set<Value*> initSet = {fn};
-    (*result)[*workList.begin()].first.PVM.insert(std::make_pair(fn, initSet)); 
     (*result)[*workList.begin()].first = initval;    
     while(!workList.empty()) {
         BasicBlock *bb = *workList.begin();

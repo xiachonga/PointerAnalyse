@@ -57,13 +57,14 @@ struct FuncPtrPass : public ModulePass {
     static char ID; // Pass identification, replacement for typeid
     FuncPtrPass() : ModulePass(ID) {}
     std::set<Function* > functionWorkList;
-
+    std::set<Function* > functionConstant;
     bool runOnModule(Module &M) override {
        for (Module::iterator fn = M.begin(); fn != M.end(); ++fn) {
            if ((&*fn)->isIntrinsic()) {
                 continue;
            }
            functionWorkList.insert(&*fn);
+           functionConstant.insert(&*fn);
        }
        LivenessVisitor visitor;
        DataflowResult<LivenessInfo>::Type result;
@@ -75,6 +76,10 @@ struct FuncPtrPass : public ModulePass {
             if (funcArgPointSet.count(F)) {
                 initval = funcArgPointSet[F];
             }
+            /*for (auto fn : functionConstant) {
+                std::set<Value* > tempFuncSet = {fn};
+                initval.PVM.insert(std::make_pair(fn, tempFuncSet)); 
+            }*/
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
             functionWorkList.insert(visitor.getFunctionWorkList().begin(), visitor.getFunctionWorkList().end());
             std::set<Function* > funcSet = {};
@@ -84,7 +89,7 @@ struct FuncPtrPass : public ModulePass {
        PrintResult(visitor.getFinalResult());
        return false; 
     }
-    
+
     void PrintResult(std::map<CallInst*, std::set<Function*> > Result) {
         unsigned int line = 0;
 		int flag = 0;
