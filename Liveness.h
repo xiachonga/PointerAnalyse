@@ -37,7 +37,7 @@ struct LivenessInfo {
    // Possible Value Map
    // A instruction (phiNode or load) have more than one possible result
    // An argument that has more than one possible value
-   std::map<Value *, std::set<Value *>> PVM;
+   //std::map<Value *, std::set<Value *>> PVM;
 
    LivenessInfo() : PointToSet() {}
    LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
@@ -147,7 +147,22 @@ public:
          valueSet.insert(pointToSet[pointerValue].begin(), pointToSet[pointerValue].end());
        }
    }
+    void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
+     PointToSetType &pointToSet = dfval->PointToSet;
+     pointToSet[allocaInst] = {};
+   }
 
+   void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
+     errs() << ">>>>> ptr\n";
+     getElementPtrInst->dump();
+     PointToSetType &pointToSet = dfval->PointToSet;
+     Value *pointer = getElementPtrInst->getPointerOperand();
+     if (isa<AllocaInst>(pointer))
+       pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
+     else {
+       pointToSet[getElementPtrInst] = pointToSet[pointer];
+     }
+   }
    void handleFunctionArgs(CallInst* callInst, Function* func, LivenessInfo* dfval) {
         int i = 0;
         for (Use& U : callInst->args()) {
@@ -275,22 +290,7 @@ public:
        return;
    }
 
-   void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
-     PointToSetType &pointToSet = dfval->PointToSet;
-     pointToSet[allocaInst] = {};
-   }
-
-   void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
-     errs() << ">>>>> ptr\n";
-     getElementPtrInst->dump();
-     PointToSetType &pointToSet = dfval->PointToSet;
-     Value *pointer = getElementPtrInst->getPointerOperand();
-     if (isa<AllocaInst>(pointer))
-       pointToSet[getElementPtrInst] = {getElementPtrInst->getPointerOperand()};
-     else {
-       pointToSet[getElementPtrInst] = pointToSet[pointer];
-     }
-   }
+   
    void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
 //        inst->dump();
