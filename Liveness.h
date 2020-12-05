@@ -103,12 +103,13 @@ public:
   
      PointToSetType &pointToSet = dfval->PointToSet;
      
-     #ifdef DEBUG
-     errs() << "========store begin=========\n";
+     //#ifdef DEBUG
+     errs() << ">>>>>>>>>>>> store\n";
      valueOp->dump();
      pointerOp->dump();
      errs() <<possibleValues.size()<<"\n";
      errs() <<possiblePointers.size()<<"\n";
+<<<<<<< HEAD
      errs() << "==========store end===========\n";
      #endif
      if (possiblePointers.size() == 0) {
@@ -123,6 +124,13 @@ public:
        } else {
             pointToSet[pointer] = possibleValues;
        }
+=======
+     errs() << "<<<<<<<<<<<\n";
+     //#endif
+     if (possiblePointers.size() == 1){
+       Value *pointer = *possiblePointers.begin();
+       pointToSet[pointer] = possibleValues;
+>>>>>>> origin/zzc
        return;
      }
      for (Value *pointer : possiblePointers){
@@ -135,31 +143,30 @@ public:
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
 
      PointToSetType &pointToSet = dfval->PointToSet;
+<<<<<<< HEAD
      #ifdef DEBUG
      errs() << "========load begin=========\n";
      pointerOp->dump();
      errs() << possiblePointers.size() <<"\n";
      errs() << "========load end===========\n";
      #endif
+=======
+
+>>>>>>> origin/zzc
      for (Value *pointer : possiblePointers){
-         ValueSetType possibleValues = {};
-        #ifdef DEBUG
-        errs() << "========load111 begin=========\n";
-        pointer->dump();
-        errs() << "========load111 begin=========\n";
-       #endif
-       if (isa<Function>(pointer)) {
-           possibleValues = {pointer};
-       } else {
-          possibleValues  = pointToSet[pointer];
-       } 
-       //pointer->dump();
-       //ValueSetType possibleValues = dfval->getPossibleValues(pointer);
+       ValueSetType possibleValues = dfval->getPossibleValues(pointer);
        pointToSet[loadInst].insert(possibleValues.begin(), possibleValues.end());
      }
    }
 
   void computeAllocaInst(AllocaInst *allocaInst, PointerSetInfo *dfval) {
+  }
+
+  void computeBitCastInst(BitCastInst *bitCastInst, PointerSetInfo *dfval){
+    //bitCastInst->dump();
+    Value *valueOp = bitCastInst->getOperand(0);
+    ValueSetType possibleValues = dfval->getPossibleValues(valueOp);
+    (*dfval)[bitCastInst] = possibleValues; 
   }
 
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, PointerSetInfo* dfval) {
@@ -228,8 +235,12 @@ public:
            errs() << "===========value is a function end============" << "\n";
            dfval->PointToSet[callInst].insert(returnPointSet[callInst].begin(), returnPointSet[callInst].end());
            std::set<Function* > funcSet = {func};
-           functionWorkList.insert(func);
            finalResult.insert(std::make_pair(callInst, funcSet));
+           if (func->getName() == "malloc"){
+             (*dfval)[callInst] = {callInst};
+             return;
+           }
+           functionWorkList.insert(func);
            if (callfunction.count(func) == 0) {
                callfunction[func] = {callInst};
            } else {
@@ -316,6 +327,7 @@ public:
    
    void compDFVal(Instruction *inst, PointerSetInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
+        errs() << ">>>>>>>>>>\t";
         inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
@@ -349,6 +361,8 @@ public:
             computeGetElementPtrInst(getElementPtrInst, dfval);
         } else if (AllocaInst *allocaInst = dyn_cast<AllocaInst>(inst)){
           computeAllocaInst(allocaInst, dfval);
+        } else if (BitCastInst *bitCastInst = dyn_cast<BitCastInst>(inst)) {
+          computeBitCastInst(bitCastInst, dfval);
         } else {
             #ifdef DEBUG
                 errs() << inst->getName() << "\n";
