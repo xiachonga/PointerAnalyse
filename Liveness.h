@@ -89,6 +89,8 @@ public:
       PointToSetType &pointToSet = dfval->PointToSet;
       for (Use &U : phiNode->incoming_values()) {
           ValueSetType possibleValues = dfval->getPossibleValues(U.get());
+          if (possibleValues.size() != 0)
+          (*possibleValues.begin())->dump();
           (*dfval)[phiNode].insert(possibleValues.begin(), possibleValues.end());
 		  }
    }
@@ -111,6 +113,9 @@ public:
      #endif
      if (possiblePointers.size() == 0) {
        pointToSet[pointerOp] = possibleValues;
+       if (GetElementPtrInst* getElementPtrInst = dyn_cast<GetElementPtrInst>(pointerOp)) {
+           pointToSet[getElementPtrInst->getPointerOperand()] = possibleValues;
+       }
      } else if (possiblePointers.size() == 1){
        Value *pointer = *possiblePointers.begin(); //pointer指向的可能直接就是Function？
         if (isa<Function>(pointer)) {
@@ -130,12 +135,12 @@ public:
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
 
      PointToSetType &pointToSet = dfval->PointToSet;
-     //#ifdef DEBUG
+     #ifdef DEBUG
      errs() << "========load begin=========\n";
      pointerOp->dump();
      errs() << possiblePointers.size() <<"\n";
      errs() << "========load end===========\n";
-     //#endif
+     #endif
      for (Value *pointer : possiblePointers){
          ValueSetType possibleValues = {};
         #ifdef DEBUG
@@ -160,6 +165,11 @@ public:
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, PointerSetInfo* dfval) {
      PointToSetType &pointToSet = dfval->PointToSet;
      Value *pointerOp = getElementPtrInst->getPointerOperand();
+     #ifdef DEBUG
+     errs() <<"=========PtrInst begin========"<<"\n";
+     pointerOp->dump();
+     errs() <<"=========PtrInst end========"<<"\n";
+     #endif
      pointToSet[getElementPtrInst] = dfval->getPossibleValues(pointerOp);
    }
 
@@ -183,11 +193,11 @@ public:
                 }
                    
             } else {
-                //#ifdef DEBUG 
+                #ifdef DEBUG 
                 errs()<<"=======arg else begin======"<<"\n";
                 U.get()->dump();
                 errs()<<"=======arg else end======"<<"\n";
-                //#endif
+                #endif
                 if (dfval->PointToSet.count(U.get()) != 0) {
                     ValueSetType pointSet = dfval->PointToSet[U.get()];
                     //(*pointSet.begin())->dump();
@@ -212,6 +222,11 @@ public:
            if (func->isIntrinsic()) {
                return;
            }
+           errs() << "===========value is a function begin============" << "\n";
+           value->dump();
+           errs() << returnPointSet[callInst].size() <<"\n";
+           errs() << "===========value is a function end============" << "\n";
+           dfval->PointToSet[callInst].insert(returnPointSet[callInst].begin(), returnPointSet[callInst].end());
            std::set<Function* > funcSet = {func};
            functionWorkList.insert(func);
            finalResult.insert(std::make_pair(callInst, funcSet));
@@ -221,13 +236,15 @@ public:
                callfunction[func].insert(callInst);
            }    
            handleFunctionArgs(callInst, func, dfval);
+           //dfval->PointToSet[callInst] = {func};
 
        } else {
            //#ifdef DEBUG
-           errs() << "value is a function pointer" << "\n";
+           errs() << "===========value is a function pointer begin============" << "\n";
            value->dump();
+           errs() << "===========value is a function pointer end============" << "\n";
            //#endif
-           dfval->PointToSet[value].insert(returnPointSet[value].begin(), returnPointSet[value].end());
+           dfval->PointToSet[callInst].insert(returnPointSet[callInst].begin(), returnPointSet[callInst].end());
            if (dfval->PointToSet.count(value) != 0) {
                std::set<Function* > funcSet = {};
                ValueSetType PointSet = dfval->getPossibleValues(value);
@@ -269,20 +286,23 @@ public:
                Value* returnValue = returnInst->getReturnValue();
                for(std::set<CallInst* >::iterator iter = tempCallSet.begin(); iter != tempCallSet.end(); ++iter) {
                    if (dfval->PointToSet.count(returnValue) != 0) {
+                       //#ifdef DEBUG
                        errs() <<"======returnFunction begin======"<<"\n";
                        funcTemp->dump();
                        (*iter)->dump();
+                       returnValue->dump();
                        errs() <<"======returnFunction end======"<<"\n";
+                       //#endif
                        ValueSetType tempReturnValueSet = dfval->PointToSet[returnValue];
                        //(*tempReturnValueSet.begin())->dump();
                        //dfval->PointToSet[*iter].insert(tempReturnValueSet.begin(), tempReturnValueSet.end());
                        unsigned int size = returnPointSet[*iter].size();
-                       errs() << size << "\n";
+                       //errs() << size << "\n";
                        returnPointSet[*iter].insert(tempReturnValueSet.begin(), tempReturnValueSet.end());
-                       errs() << returnPointSet[*iter].size() <<"\n";
+                       //errs() << returnPointSet[*iter].size() <<"\n";
                        if (size != returnPointSet[*iter].size()) { //TODO
                             if (Function* recomputeFunction = dyn_cast<Function>((*iter)->getParent()->getParent())) {
-                                recomputeFunction->dump();
+                                //recomputeFunction->dump();
                                 functionWorkList.insert(recomputeFunction);
                             }
                        }
