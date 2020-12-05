@@ -28,13 +28,13 @@ using PointToSetType = std::map<Value *, ValueSetType>;
 using ValueValuesMapType = std::map<Value *, ValueSetType>;
 
 //#define DEBUG
-struct LivenessInfo {
+struct PointerSetInfo {
    // Point To Value Map
    // Pointer and value it points to
    PointToSetType PointToSet;
 
-   LivenessInfo() : PointToSet() {}
-   LivenessInfo(const LivenessInfo & info) : PointToSet(info.PointToSet) {}
+   PointerSetInfo() : PointToSet() {}
+   PointerSetInfo(const PointerSetInfo & info) : PointToSet(info.PointToSet) {}
 
    inline ValueSetType getPossibleValues(Value *V){
      if (isa<Function>(V) || isa<AllocaInst>(V)) return {V};
@@ -45,21 +45,21 @@ struct LivenessInfo {
      return PointToSet[V];
    }
   
-   bool operator == (const LivenessInfo & info) const {
+   bool operator == (const PointerSetInfo & info) const {
        return PointToSet == info.PointToSet;
    }
 };
 
-inline raw_ostream &operator<<(raw_ostream &out, const LivenessInfo &info) {
+inline raw_ostream &operator<<(raw_ostream &out, const PointerSetInfo &info) {
     return out;
 }
 
 	
-class LivenessVisitor : public DataflowVisitor<struct LivenessInfo> {
+class LivenessVisitor : public DataflowVisitor<struct PointerSetInfo> {
 private:
     std::set<Function* > functionWorkList;
     std::map<CallInst*, std::set<Function*> > finalResult;
-    std::map<Function*, LivenessInfo> functionArgPointSet;
+    std::map<Function*, PointerSetInfo> functionArgPointSet;
     std::map<Function*, std::set<CallInst*> > callfunction;
     PointToSetType returnPointSet;
 public:
@@ -70,13 +70,13 @@ public:
    void setFunctionWorkList(std::set<Function* > func) {
        this->functionWorkList = func;
    }
-   std::map<Function*, LivenessInfo> getFunctionArgPointSet() {
+   std::map<Function*, PointerSetInfo> getFunctionArgPointSet() {
        return functionArgPointSet;
    }
    std::map<CallInst*, std::set<Function*> > getFinalResult() {
        return finalResult;
    }
-   void merge(LivenessInfo * dest, const LivenessInfo & src) override {
+   void merge(PointerSetInfo * dest, const PointerSetInfo & src) override {
        for(auto iter = src.PointToSet.begin(); iter != src.PointToSet.end(); ++iter) {
            if (dest->PointToSet.find(iter->first) != dest->PointToSet.end()) {
                dest->PointToSet[iter->first].insert(iter->second.begin(), iter->second.end());
@@ -85,7 +85,7 @@ public:
            }
        }
    }
-   void computePhiNode(PHINode* phiNode, LivenessInfo* dfval) {
+   void computePhiNode(PHINode* phiNode, PointerSetInfo* dfval) {
       PointToSetType &pointToSet = dfval->PointToSet;
       for (Use &U : phiNode->incoming_values()) {
           ValueSetType possibleValues = dfval->getPossibleValues(U.get());
@@ -93,17 +93,31 @@ public:
 		  }
    }
 
-   void computeStoreInst(StoreInst* storeInst, LivenessInfo* dfval) {
+   void computeStoreInst(StoreInst* storeInst, PointerSetInfo* dfval) {
      Value *valueOp = storeInst->getValueOperand();
      ValueSetType possibleValues = dfval->getPossibleValues(valueOp);
      Value *pointerOp = storeInst->getPointerOperand();
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
   
      PointToSetType &pointToSet = dfval->PointToSet;
-
-     if (possiblePointers.size() == 1){
-       Value *pointer = *possiblePointers.begin();
-       pointToSet[pointer] = possibleValues;
+     
+     #ifdef DEBUG
+     errs() << "========store begin=========\n";
+     valueOp->dump();
+     pointerOp->dump();
+     errs() <<possibleValues.size()<<"\n";
+     errs() <<possiblePointers.size()<<"\n";
+     errs() << "==========store end===========\n";
+     #endif
+     if (possiblePointers.size() == 0) {
+       pointToSet[pointerOp] = possibleValues;
+     } else if (possiblePointers.size() == 1){
+       Value *pointer = *possiblePointers.begin(); //pointer指向的可能直接就是Function？
+        if (isa<Function>(pointer)) {
+            pointToSet[pointerOp] = {valueOp};
+       } else {
+            pointToSet[pointer] = possibleValues;
+       }
        return;
      }
      for (Value *pointer : possiblePointers){
@@ -111,28 +125,45 @@ public:
      }
    }
 
-   void computeLoadInst(LoadInst* loadInst, LivenessInfo* dfval) {
+   void computeLoadInst(LoadInst* loadInst, PointerSetInfo* dfval) {
      Value *pointerOp = loadInst->getPointerOperand();
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
 
      PointToSetType &pointToSet = dfval->PointToSet;
-
+     //#ifdef DEBUG
+     errs() << "========load begin=========\n";
+     pointerOp->dump();
+     errs() << possiblePointers.size() <<"\n";
+     errs() << "========load end===========\n";
+     //#endif
      for (Value *pointer : possiblePointers){
-       ValueSetType &possibleValues = pointToSet[pointer];
+         ValueSetType possibleValues = {};
+        #ifdef DEBUG
+        errs() << "========load111 begin=========\n";
+        pointer->dump();
+        errs() << "========load111 begin=========\n";
+       #endif
+       if (isa<Function>(pointer)) {
+           possibleValues = {pointer};
+       } else {
+          possibleValues  = pointToSet[pointer];
+       } 
+       //pointer->dump();
+       //ValueSetType possibleValues = dfval->getPossibleValues(pointer);
        pointToSet[loadInst].insert(possibleValues.begin(), possibleValues.end());
      }
    }
 
-  void computeAllocaInst(AllocaInst *allocaInst, LivenessInfo *dfval) {
+  void computeAllocaInst(AllocaInst *allocaInst, PointerSetInfo *dfval) {
   }
 
-   void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, LivenessInfo* dfval) {
+   void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, PointerSetInfo* dfval) {
      PointToSetType &pointToSet = dfval->PointToSet;
      Value *pointerOp = getElementPtrInst->getPointerOperand();
      pointToSet[getElementPtrInst] = dfval->getPossibleValues(pointerOp);
    }
 
-   void handleFunctionArgs(CallInst* callInst, Function* func, LivenessInfo* dfval) {
+   void handleFunctionArgs(CallInst* callInst, Function* func, PointerSetInfo* dfval) {
         int i = 0;
         for (Use& U : callInst->args()) {
             if (Function * funcArg = dyn_cast<Function>(U.get())) { 
@@ -144,7 +175,7 @@ public:
                 Argument * arg = func->getArg(i);
                 if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
                     ValueSetType pointSet = {funcArg};
-                    LivenessInfo info;
+                    PointerSetInfo info;
                     info.PointToSet.insert(std::make_pair(arg, pointSet)); 
                     functionArgPointSet.insert(std::make_pair(func, info)); 
                 } else {
@@ -152,15 +183,17 @@ public:
                 }
                    
             } else {
-                #ifdef DEBUG 
-                errs()<<"=======else======"<<"\n";
+                //#ifdef DEBUG 
+                errs()<<"=======arg else begin======"<<"\n";
                 U.get()->dump();
-                #endif
+                errs()<<"=======arg else end======"<<"\n";
+                //#endif
                 if (dfval->PointToSet.count(U.get()) != 0) {
                     ValueSetType pointSet = dfval->PointToSet[U.get()];
+                    //(*pointSet.begin())->dump();
                     Argument * arg = func->getArg(i);
                     if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
-                        LivenessInfo info;
+                        PointerSetInfo info;
                         info.PointToSet.insert(std::make_pair(arg, pointSet)); 
                         functionArgPointSet.insert(std::make_pair(func, info)); 
                     } else {
@@ -172,7 +205,7 @@ public:
         } 
        return;
    } 
-   void computeCallInst(CallInst* callInst, LivenessInfo* dfval) {
+   void computeCallInst(CallInst* callInst, PointerSetInfo* dfval) {
        Value* value = callInst->getCalledValue();
        
        if (Function* func = dyn_cast<Function>(value)) {
@@ -190,15 +223,17 @@ public:
            handleFunctionArgs(callInst, func, dfval);
 
        } else {
-           #ifdef DEBUG
+           //#ifdef DEBUG
            errs() << "value is a function pointer" << "\n";
            value->dump();
-           #endif
+           //#endif
            dfval->PointToSet[value].insert(returnPointSet[value].begin(), returnPointSet[value].end());
            if (dfval->PointToSet.count(value) != 0) {
                std::set<Function* > funcSet = {};
-               ValueSetType PointSet = dfval->PointToSet[value];
+               ValueSetType PointSet = dfval->getPossibleValues(value);
+               errs() <<PointSet.size()<<"\n" ;
                for(ValueSetType::iterator iter = PointSet.begin(); iter != PointSet.end(); ++iter) {
+                   (*iter)->dump();
                    if (Function* funcTemp = dyn_cast<Function>(*iter)) {
                        #ifdef DEBUG
                        errs() << "=============" << "\n";
@@ -219,7 +254,7 @@ public:
        }
        return;
    } 
-   void computeReturnInst(ReturnInst* returnInst, LivenessInfo* dfval) {
+   void computeReturnInst(ReturnInst* returnInst, PointerSetInfo* dfval) {
        //存函数可能有哪些callInst调用，然后根据函数找这些callInst，
        #ifdef DEBUG
        errs() << "======computeReturnInst begin========" <<"\n";
@@ -239,7 +274,7 @@ public:
                        (*iter)->dump();
                        errs() <<"======returnFunction end======"<<"\n";
                        ValueSetType tempReturnValueSet = dfval->PointToSet[returnValue];
-                       (*tempReturnValueSet.begin())->dump();
+                       //(*tempReturnValueSet.begin())->dump();
                        //dfval->PointToSet[*iter].insert(tempReturnValueSet.begin(), tempReturnValueSet.end());
                        unsigned int size = returnPointSet[*iter].size();
                        errs() << size << "\n";
@@ -259,9 +294,9 @@ public:
    }
 
    
-   void compDFVal(Instruction *inst, LivenessInfo * dfval) override{
+   void compDFVal(Instruction *inst, PointerSetInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
-//        inst->dump();
+        inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
                 errs() << phiNode->getName() << "\n";
@@ -319,11 +354,11 @@ public:
    bool runOnFunction(Function &F) override {
        //F.dump();
        LivenessVisitor visitor;
-       DataflowResult<LivenessInfo>::Type result;
-       LivenessInfo initval;
+       DataflowResult<PointerSetInfo>::Type result;
+       PointerSetInfo initval;
 
        compBackwardDataflow(&F, &visitor, &result, initval);
-       //printDataflowResult<LivenessInfo>(errs(), result);
+       //printDataflowResult<PointerSetInfo>(errs(), result);
        return false;
    }
 };

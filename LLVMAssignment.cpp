@@ -66,12 +66,12 @@ struct FuncPtrPass : public ModulePass {
            functionWorkList.insert(&*fn);
        }
        LivenessVisitor visitor;
-       DataflowResult<LivenessInfo>::Type result;
-       LivenessInfo initval;
+       DataflowResult<PointerSetInfo>::Type result;
+       PointerSetInfo initval;
        while (!functionWorkList.empty()) {
             Function* F = *(functionWorkList.begin());
             functionWorkList.erase(F);
-            std::map<Function*, LivenessInfo> funcArgPointSet = visitor.getFunctionArgPointSet();
+            std::map<Function*, PointerSetInfo> funcArgPointSet = visitor.getFunctionArgPointSet();
             if (funcArgPointSet.count(F)) {
                 initval = funcArgPointSet[F];
             }
