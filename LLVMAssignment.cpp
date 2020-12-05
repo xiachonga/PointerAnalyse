@@ -22,7 +22,6 @@
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 
-
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Scalar.h>
 
@@ -39,10 +38,12 @@ using namespace llvm;
 static ManagedStatic<LLVMContext> GlobalContext;
 static LLVMContext &getGlobalContext() { return *GlobalContext; }
 
-struct EnableFunctionOptPass : public FunctionPass {
+struct EnableFunctionOptPass : public FunctionPass
+{
     static char ID;
-    EnableFunctionOptPass() :FunctionPass(ID) {}
-    bool runOnFunction(Function & F) override {
+    EnableFunctionOptPass() : FunctionPass(ID) {}
+    bool runOnFunction(Function &F) override
+    {
         if (F.hasFnAttribute(Attribute::OptimizeNone))
         {
             F.removeFnAttr(Attribute::OptimizeNone);
@@ -54,128 +55,127 @@ struct EnableFunctionOptPass : public FunctionPass {
 char EnableFunctionOptPass::ID = 0;
 
 ///!TODO TO BE COMPLETED BY YOU FOR ASSIGNMENT 3
-struct FuncPtrPass : public ModulePass {
+struct FuncPtrPass : public ModulePass
+{
     static char ID; // Pass identification, replacement for typeid
     FuncPtrPass() : ModulePass(ID) {}
     queue<Function *> functionWorkQueue;
-    std::set<Function* > functionWorkList;
+    std::set<Function *> functionWorkList;
 
-    bool runOnModule(Module &M) override {
-       for (Module::iterator fn = M.begin(); fn != M.end(); ++fn) {
-           if ((&*fn)->isIntrinsic()) {
+    bool runOnModule(Module &M) override
+    {
+        for (Module::iterator fn = M.begin(); fn != M.end(); ++fn)
+        {
+            if ((&*fn)->isIntrinsic())
+            {
                 continue;
-           }
-           functionWorkQueue.push(&*fn);
-           functionWorkList.insert(&*fn);
-       }
-       PointToSetVisitor visitor;
+            }
+            functionWorkQueue.push(&*fn);
+            functionWorkList.insert(&*fn);
+        }
+        PointToSetVisitor visitor;
         map<Function *, PointerSetInfo> &initvals = visitor.getFunctionArgPointSet();
 
-       DataflowResult<PointerSetInfo>::Type result;
-       PointerSetInfo initval;
-       while (!functionWorkList.empty()) {
-            Function* F = functionWorkQueue.front();
+        DataflowResult<PointerSetInfo>::Type result;
+        PointerSetInfo initval;
+        while (!functionWorkList.empty())
+        {
+            Function *F = functionWorkQueue.front();
             functionWorkQueue.pop();
             functionWorkList.erase(F);
-            if (F->getName() == "malloc") continue;
-#ifdef FUNC
-            errs() << ">>>>> Dealing " << F->getName() << "\n";
-#endif
-initval = initvals[F];
+            if (F->getName() == "malloc")
+                continue;
+
+            initval = initvals[F];
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
-#ifdef FUNC
-            errs() << "<<<<< Finish  " << F->getName() << " : " << visitor.getFunctionWorkQueue().size();
-#endif
-queue<Function *> &newFunctionWorkQueue = visitor.getFunctionWorkQueue();
-while (newFunctionWorkQueue.size())
-{
-    F = newFunctionWorkQueue.front();
-    newFunctionWorkQueue.pop();
-    if (functionWorkList.count(F)) continue;
-#ifdef FUNC
-            errs() << "  " << F->getName();
-#endif
-    functionWorkQueue.push(F);
-    functionWorkList.insert(F);
-}
-#ifdef FUNC
-            errs() << "\n\n\n";
-#endif
+            queue<Function *> &newFunctionWorkQueue = visitor.getFunctionWorkQueue();
+            while (newFunctionWorkQueue.size())
+            {
+                F = newFunctionWorkQueue.front();
+                newFunctionWorkQueue.pop();
+                if (functionWorkList.count(F))
+                    continue;
+
+                functionWorkQueue.push(F);
+                functionWorkList.insert(F);
+            }
+
             visitor.reset();
-       } 
-       PrintResult(visitor.getFinalResult());
-       return false; 
+        }
+        PrintResult(visitor.getFinalResult());
+        return false;
     }
-    void PrintResult(std::map<CallInst*, std::set<Function*> > Result) {
+    void PrintResult(std::map<CallInst *, std::set<Function *>> Result)
+    {
         unsigned int line = 0;
-		int flag = 0;
-		int flag2 = 0;
-		for (std::pair<CallInst *, std::set<Function *> > CIMF : Result)
-		{
-			unsigned int newLine = CIMF.first->getDebugLoc().getLine();
-			if (flag != 0 && newLine != line)
-			{
-				errs() << '\n';
-				flag2 = 0;
-			}
-			flag = 1;
-			if (newLine != line)
-			{
-				errs() << newLine << " :";
-				line = newLine;
-			}
-			for (Function *F : CIMF.second)
-			{
-				if (flag2 == 0) {
-					errs() << ' ' << F->getName();
-					flag2 = 1;
-				} else {
-					errs() << ", " << F->getName();
-				}
-				
-			}
-		}
-		errs() << '\n';
+        int flag = 0;
+        int flag2 = 0;
+        for (std::pair<CallInst *, std::set<Function *>> CIMF : Result)
+        {
+            unsigned int newLine = CIMF.first->getDebugLoc().getLine();
+            if (flag != 0 && newLine != line)
+            {
+                errs() << '\n';
+                flag2 = 0;
+            }
+            flag = 1;
+            if (newLine != line)
+            {
+                errs() << newLine << " :";
+                line = newLine;
+            }
+            for (Function *F : CIMF.second)
+            {
+                if (flag2 == 0)
+                {
+                    errs() << ' ' << F->getName();
+                    flag2 = 1;
+                }
+                else
+                {
+                    errs() << ", " << F->getName();
+                }
+            }
+        }
+        errs() << '\n';
     }
 };
-
 
 char FuncPtrPass::ID = 0;
 static RegisterPass<FuncPtrPass> X("funcptrpass", "Print function call instruction");
 
 static cl::opt<std::string>
-InputFilename(cl::Positional,
-              cl::desc("<filename>.bc"),
-              cl::init(""));
+    InputFilename(cl::Positional,
+                  cl::desc("<filename>.bc"),
+                  cl::init(""));
 
+int main(int argc, char **argv)
+{
+    LLVMContext &Context = getGlobalContext();
+    SMDiagnostic Err;
+    // Parse the command line to read the Inputfilename
+    cl::ParseCommandLineOptions(argc, argv,
+                                "FuncPtrPass \n My first LLVM too which does not do much.\n");
 
-int main(int argc, char **argv) {
-   LLVMContext &Context = getGlobalContext();
-   SMDiagnostic Err;
-   // Parse the command line to read the Inputfilename
-   cl::ParseCommandLineOptions(argc, argv,
-                              "FuncPtrPass \n My first LLVM too which does not do much.\n");
+    // Load the input module
+    std::unique_ptr<Module> M = parseIRFile(InputFilename, Err, Context);
+    if (!M)
+    {
+        Err.print(argv[0], errs());
+        return 1;
+    }
 
+    llvm::legacy::PassManager Passes;
+    //#if LLVM_VERSION_MAJOR == 5
+    Passes.add(new EnableFunctionOptPass());
+    //#endif
+    ///Transform it to SSA
+    Passes.add(llvm::createPromoteMemoryToRegisterPass());
 
-   // Load the input module
-   std::unique_ptr<Module> M = parseIRFile(InputFilename, Err, Context);
-   if (!M) {
-      Err.print(argv[0], errs());
-      return 1;
-   }
-
-   llvm::legacy::PassManager Passes;
-//#if LLVM_VERSION_MAJOR == 5
-   Passes.add(new EnableFunctionOptPass());
-//#endif
-   ///Transform it to SSA
-   Passes.add(llvm::createPromoteMemoryToRegisterPass());
-
-   /// Your pass to print Function and Call Instructions
-   Passes.add(new FuncPtrPass());
-   Passes.run(*M.get());
+    /// Your pass to print Function and Call Instructions
+    Passes.add(new FuncPtrPass());
+    Passes.run(*M.get());
 #ifndef NDEBUG
-   //system("pause");
+    //system("pause");
 #endif
 }
-

@@ -181,12 +181,7 @@ public:
         {
             info[pointer].insert(possibleValues.begin(), possibleValues.end());
         }
-        // if (storeInst->getParent()->getParent()->getName() == "swap_w")
-        // {
-        //     errs() << ">>>>> Store\n";
-        //     dumpValue(pointerOp);
-        //     dumpValue(valueOp);
-        // }
+
     }
 
     void computeLoadInst(LoadInst *loadInst, PointerSetInfo &info)
@@ -199,21 +194,12 @@ public:
             info[loadInst] = info[storeOrMemcpyInst];
             return;
         }
-        // if (loadInst->getParent()->getParent()->getName() == "swap_w")
-        // {
-        //     errs() << ">>>>> Load\n";
-        // }
+
         for (Value *pointer : possiblePointers)
         {
             ValueSetType possibleValues = info[pointer];
             info[loadInst].insert(possibleValues.begin(), possibleValues.end());
-            // if (loadInst->getParent()->getParent()->getName() == "swap_w")
-            // {
-            //     errs() << ">> Group\n";
-            //     dumpValue(pointer);
-            //     for (Value *t : possibleValues)
-            //         dumpValue(t);
-            // }
+       
         }
     }
 
@@ -326,15 +312,10 @@ public:
             // add argument
             PointerSetInfo newInfo = functionArgPointSet[func];
             int argc = 0;
-            // errs() << ">> Adding argument for " << func->getName() << "\n";
             for (Use &U : callInst->args())
             {
                 Value *V = U.get();
                 Argument *arg = func->getArg(argc);
-                // errs() << ">> Parameter " << argc << "\n";
-                // dumpValue(arg);
-                // dumpValue(V);
-                // errs() << ">> Argument\n";
                 ValueSetType possibleValues = info.getPossibleValues(V);
                 if (info.BBStoreMap.count(V))
                 {
@@ -343,11 +324,9 @@ public:
                 newInfo[arg].insert(possibleValues.begin(), possibleValues.end());
                 for (Value *pointer : possibleValues)
                 {
-                    // dumpValue(pointer);
                     movePointerSetInfo(newInfo, info, pointer);
                 }
                 argc++;
-                // errs() << "\n";
             }
             if (newInfo == functionArgPointSet[func])
                 continue;
@@ -423,13 +402,6 @@ public:
         PointerSetInfo &info = *dfval;
         if (isa<DbgInfoIntrinsic>(inst))
             return;
-#ifdef INST
-        if (inst->getParent()->getParent()->getName() == "swap_w")
-        {
-            errs() << ">>>>> compDFVal\t";
-            inst->dump();
-        }
-#endif
         if (PHINode *phiNode = dyn_cast<PHINode>(inst))
         {
             computePhiNode(phiNode, info);
