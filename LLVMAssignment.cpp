@@ -57,6 +57,7 @@ char EnableFunctionOptPass::ID = 0;
 struct FuncPtrPass : public ModulePass {
     static char ID; // Pass identification, replacement for typeid
     FuncPtrPass() : ModulePass(ID) {}
+    queue<Function *> functionWorkQueue;
     std::set<Function* > functionWorkList;
 
     bool runOnModule(Module &M) override {
@@ -64,36 +65,44 @@ struct FuncPtrPass : public ModulePass {
            if ((&*fn)->isIntrinsic()) {
                 continue;
            }
+           functionWorkQueue.push(&*fn);
            functionWorkList.insert(&*fn);
        }
        PointToSetVisitor visitor;
+        map<Function *, PointerSetInfo> &initvals = visitor.getFunctionArgPointSet();
+
        DataflowResult<PointerSetInfo>::Type result;
        PointerSetInfo initval;
        while (!functionWorkList.empty()) {
-            Function* F = *(functionWorkList.begin());
+            Function* F = functionWorkQueue.front();
+            functionWorkQueue.pop();
             functionWorkList.erase(F);
             if (F->getName() == "malloc") continue;
-            std::map<Function*, PointerSetInfo> &funcArgPointSet = visitor.getFunctionArgPointSet();
-            if (funcArgPointSet.count(F)) {
-                initval = funcArgPointSet[F];
-            }
 #ifdef FUNC
             errs() << ">>>>> Dealing " << F->getName() << "\n";
 #endif
+initval = initvals[F];
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
 #ifdef FUNC
-            errs() << "<<<<< Finish  " << F->getName() << " : " << visitor.getFunctionWorkList().size();
-            for (Function *temp : visitor.getFunctionWorkList())
-            {
-                errs() << " " << temp->getName();
-            }
+            errs() << "<<<<< Finish  " << F->getName() << " : " << visitor.getFunctionWorkQueue().size();
+#endif
+queue<Function *> &newFunctionWorkQueue = visitor.getFunctionWorkQueue();
+while (newFunctionWorkQueue.size())
+{
+    F = newFunctionWorkQueue.front();
+    newFunctionWorkQueue.pop();
+    if (functionWorkList.count(F)) continue;
+#ifdef FUNC
+            errs() << "  " << F->getName();
+#endif
+    functionWorkQueue.push(F);
+    functionWorkList.insert(F);
+}
+#ifdef FUNC
             errs() << "\n\n\n";
 #endif
-            functionWorkList.insert(visitor.getFunctionWorkList().begin(), visitor.getFunctionWorkList().end());
-            std::set<Function* > funcSet = {};
-            visitor.setFunctionWorkList(funcSet);
+            visitor.reset();
        } 
-       // TODO print result
        PrintResult(visitor.getFinalResult());
        return false; 
     }

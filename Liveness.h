@@ -21,6 +21,7 @@
 
 #include <set>
 #include <map>
+#include <queue>
 
 using namespace llvm;
 using namespace std;
@@ -38,6 +39,7 @@ struct PointerSetInfo
     // Point To Value Map
     // Pointer and value it points to
     PointToSetType PointToSet;
+    map<Value *, Value *> BBStoreMap;
 
     PointerSetInfo() : PointToSet() {}
     PointerSetInfo(const PointerSetInfo &info) : PointToSet(info.PointToSet) {}
@@ -46,7 +48,7 @@ struct PointerSetInfo
     {
         // FIX ME
         // add what malloc as what allocaInst do?
-        if (isa<Constant>(V) || isa<AllocaInst>(V))
+        if (isa<Function>(V) || isa<AllocaInst>(V))
             return {V};
         return PointToSet[V];
     }
@@ -74,6 +76,7 @@ struct PointerSetInfo
 
     ValueSetType &operator[](Value *V)
     {
+
         return PointToSet[V];
     }
 
@@ -96,12 +99,14 @@ inline raw_ostream &operator<<(raw_ostream &out, const PointerSetInfo &info)
 class PointToSetVisitor : public DataflowVisitor<struct PointerSetInfo>
 {
 private:
-    set<Function *> functionWorkList;
+    queue<Function *> functionWorkQueue;
     map<CallInst *, set<Function *>> finalResult;
 
     map<Function *, PointerSetInfo> functionArgPointSet;
     map<Function *, PointerSetInfo> functionRetPointSet;
     map<Function *, set<Function *>> functionRetWakeupFunctions;
+
+    bool pass = false;
 
     void dumpValue(Value *V)
     {
@@ -117,15 +122,18 @@ private:
     }
 
 public:
-    PointToSetVisitor() : functionWorkList() {}
-    set<Function *> &getFunctionWorkList()
+    PointToSetVisitor() : functionWorkQueue() {}
+    queue<Function *> &getFunctionWorkQueue()
     {
-        return functionWorkList;
+        return functionWorkQueue;
     }
-    void setFunctionWorkList(set<Function *> func)
+
+    void reset()
     {
-        this->functionWorkList = func;
+        functionWorkQueue = {};
+        pass = false;
     }
+
     map<Function *, PointerSetInfo> &getFunctionArgPointSet()
     {
         return functionArgPointSet;
@@ -137,6 +145,8 @@ public:
 
     void merge(PointerSetInfo *dest, const PointerSetInfo &src) override
     {
+        if (pass)
+            return;
         for (pair<Value *, ValueSetType> temp : src.PointToSet)
         {
             dest->PointToSet[temp.first].insert(temp.second.begin(), temp.second.end());
@@ -158,7 +168,9 @@ public:
         ValueSetType possibleValues = info.getPossibleValues(valueOp);
         Value *pointerOp = storeInst->getPointerOperand();
         ValueSetType possiblePointers = info.getPossibleValues(pointerOp);
-
+        // TODO
+        info.BBStoreMap[pointerOp] = storeInst;
+        info[storeInst] = possibleValues;
         if (possiblePointers.size() == 1)
         {
             Value *pointer = *possiblePointers.begin();
@@ -169,18 +181,72 @@ public:
         {
             info[pointer].insert(possibleValues.begin(), possibleValues.end());
         }
-        // errs() << "!!!!!\n";
+        // if (storeInst->getParent()->getParent()->getName() == "swap_w")
+        // {
+        //     errs() << ">>>>> Store\n";
+        //     dumpValue(pointerOp);
+        //     dumpValue(valueOp);
+        // }
     }
 
     void computeLoadInst(LoadInst *loadInst, PointerSetInfo &info)
     {
         Value *pointerOp = loadInst->getPointerOperand();
         ValueSetType possiblePointers = info.getPossibleValues(pointerOp);
-
+        if (info.BBStoreMap.count(pointerOp))
+        {
+            Value *storeOrMemcpyInst = info.BBStoreMap[pointerOp];
+            info[loadInst] = info[storeOrMemcpyInst];
+            return;
+        }
+        // if (loadInst->getParent()->getParent()->getName() == "swap_w")
+        // {
+        //     errs() << ">>>>> Load\n";
+        // }
         for (Value *pointer : possiblePointers)
         {
             ValueSetType possibleValues = info[pointer];
             info[loadInst].insert(possibleValues.begin(), possibleValues.end());
+            // if (loadInst->getParent()->getParent()->getName() == "swap_w")
+            // {
+            //     errs() << ">> Group\n";
+            //     dumpValue(pointer);
+            //     for (Value *t : possibleValues)
+            //         dumpValue(t);
+            // }
+        }
+    }
+
+    void computeMemCpyInst(MemCpyInst *memCpyInst, PointerSetInfo &info)
+    {
+        Value *dst = memCpyInst->getArgOperand(0);
+        Value *src = memCpyInst->getArgOperand(1);
+        ValueSetType srcPossiblePointers = info.getPossibleValues(src);
+        ValueSetType possibleValues;
+        if (info.BBStoreMap.count(src))
+        {
+            Value *storeOrMemcpyInst = info.BBStoreMap[src];
+            possibleValues = info[storeOrMemcpyInst];
+        }
+        else
+        {
+            for (Value *pointer : srcPossiblePointers)
+            {
+                possibleValues.insert(info[pointer].begin(), info[pointer].end());
+            }
+        }
+        ValueSetType dstPossiblePointers = info.getPossibleValues(dst);
+        info.BBStoreMap[dst] = memCpyInst;
+        info[memCpyInst] = possibleValues;
+        if (dstPossiblePointers.size() == 1)
+        {
+            Value *pointer = *dstPossiblePointers.begin();
+            info[pointer] = possibleValues;
+            return;
+        }
+        for (Value *pointer : dstPossiblePointers)
+        {
+            info[pointer].insert(possibleValues.begin(), possibleValues.end());
         }
     }
 
@@ -222,20 +288,22 @@ public:
         }
     }
 
-    void movePointerSetInfo(PointerSetInfo &dst, PointerSetInfo &src, Value *poniter)
+    void movePointerSetInfo(PointerSetInfo &dst, PointerSetInfo &src, Value *pointer, bool replace = false)
     {
-        if (!src.count(poniter))
-            return;
-        dst[poniter].insert(src[poniter].begin(), src[poniter].end());
-        for (Value *value : src[poniter])
+        if (replace)
+            dst[pointer] = src[pointer];
+        else
+            dst[pointer].insert(src[pointer].begin(), src[pointer].end());
+        for (Value *value : src[pointer])
         {
 #ifdef DEBUG
-            assert(value != poniter && "value and poniter must be different!");
+            assert(value != pointer && "value and pointer must be different!");
 #else
-            if (value == poniter)
+            if (value == pointer)
                 continue;
 #endif
-            movePointerSetInfo(dst, src, value);
+            replace = replace && src[pointer].size() <= 1;
+            movePointerSetInfo(dst, src, value, replace);
         }
     }
 
@@ -263,18 +331,33 @@ public:
             {
                 Value *V = U.get();
                 Argument *arg = func->getArg(argc);
+                // errs() << ">> Parameter " << argc << "\n";
+                // dumpValue(arg);
+                // dumpValue(V);
+                // errs() << ">> Argument\n";
                 ValueSetType possibleValues = info.getPossibleValues(V);
+                if (info.BBStoreMap.count(V))
+                {
+                    possibleValues = {info.BBStoreMap[V]};
+                }
                 newInfo[arg].insert(possibleValues.begin(), possibleValues.end());
                 for (Value *pointer : possibleValues)
                 {
+                    // dumpValue(pointer);
                     movePointerSetInfo(newInfo, info, pointer);
                 }
                 argc++;
+                // errs() << "\n";
             }
             if (newInfo == functionArgPointSet[func])
                 continue;
             functionArgPointSet[func] = newInfo;
-            functionWorkList.insert(func);
+            functionWorkQueue.push(func);
+            pass = true;
+        }
+        if (pass)
+        {
+            functionWorkQueue.push(callInst->getParent()->getParent());
         }
         // Deal with return
         for (Function *func : possibleFunctions)
@@ -292,9 +375,11 @@ public:
             for (Use &U : callInst->args())
             {
                 Value *V = U.get();
-                for (Value *pointer : info.getPossibleValues(V))
+                ValueSetType possibleValues = info.getPossibleValues(V);
+                bool replace = possibleValues.size() == 1 && possibleFunctions.size() == 1;
+                for (Value *pointer : possibleValues)
                 {
-                    movePointerSetInfo(info, functionRetPointSet[func], pointer);
+                    movePointerSetInfo(info, functionRetPointSet[func], pointer, replace);
                 }
                 argc++;
             }
@@ -324,18 +409,26 @@ public:
         if (newInfo == functionRetPointSet[parent])
             return;
         // Wakeup
-        functionWorkList.insert(functionRetWakeupFunctions[parent].begin(), functionRetWakeupFunctions[parent].end());
+        for (Function *func : functionRetWakeupFunctions[parent])
+        {
+            functionWorkQueue.push(func);
+        }
         functionRetPointSet[parent] = newInfo;
     }
 
     void compDFVal(Instruction *inst, PointerSetInfo *dfval) override
     {
+        if (pass)
+            return;
         PointerSetInfo &info = *dfval;
         if (isa<DbgInfoIntrinsic>(inst))
             return;
 #ifdef INST
-        errs() << ">>>>> compDFVal\t";
-        inst->dump();
+        if (inst->getParent()->getParent()->getName() == "swap_w")
+        {
+            errs() << ">>>>> compDFVal\t";
+            inst->dump();
+        }
 #endif
         if (PHINode *phiNode = dyn_cast<PHINode>(inst))
         {
@@ -351,7 +444,10 @@ public:
         }
         else if (CallInst *callInst = dyn_cast<CallInst>(inst))
         {
-            computeCallInst(callInst, info);
+            if (MemCpyInst *memCpyInst = dyn_cast<MemCpyInst>(inst))
+                computeMemCpyInst(memCpyInst, info);
+            else
+                computeCallInst(callInst, info);
         }
         else if (ReturnInst *returnInst = dyn_cast<ReturnInst>(inst))
         {
@@ -376,8 +472,13 @@ public:
         else
         {
 #ifdef ERROR
-            errs() << ">>>!! Instruction need to handle\t";
-            inst->dump();
+#ifdef INST
+            if (inst->getParent()->getParent()->getName() == "swap_w")
+            {
+                errs() << ">>>!! Instruction need to handle\t";
+                inst->dump();
+            }
+#endif
 #endif
         }
     }
