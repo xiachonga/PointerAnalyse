@@ -65,7 +65,7 @@ struct FuncPtrPass : public ModulePass {
            }
            functionWorkList.insert(&*fn);
        }
-       LivenessVisitor visitor;
+       PointToSetVisitor visitor;
        DataflowResult<PointerSetInfo>::Type result;
        PointerSetInfo initval;
        while (!functionWorkList.empty()) {
@@ -121,9 +121,6 @@ struct FuncPtrPass : public ModulePass {
 char FuncPtrPass::ID = 0;
 static RegisterPass<FuncPtrPass> X("funcptrpass", "Print function call instruction");
 
-char Liveness::ID = 0;
-static RegisterPass<Liveness> Y("liveness", "Liveness Dataflow Analysis");
-
 static cl::opt<std::string>
 InputFilename(cl::Positional,
               cl::desc("<filename>.bc"),
@@ -153,7 +150,6 @@ int main(int argc, char **argv) {
    Passes.add(llvm::createPromoteMemoryToRegisterPass());
 
    /// Your pass to print Function and Call Instructions
-   //Passes.add(new Liveness());
    Passes.add(new FuncPtrPass());
    Passes.run(*M.get());
 #ifndef NDEBUG
