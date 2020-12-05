@@ -101,23 +101,17 @@ public:
   
      PointToSetType &pointToSet = dfval->PointToSet;
      
-     #ifdef DEBUG
-     errs() << "========store begin=========\n";
+     //#ifdef DEBUG
+     errs() << ">>>>>>>>>>>> store\n";
      valueOp->dump();
      pointerOp->dump();
      errs() <<possibleValues.size()<<"\n";
      errs() <<possiblePointers.size()<<"\n";
-     errs() << "==========store end===========\n";
-     #endif
-     if (possiblePointers.size() == 0) {
-       pointToSet[pointerOp] = possibleValues;
-     } else if (possiblePointers.size() == 1){
-       Value *pointer = *possiblePointers.begin(); //pointer指向的可能直接就是Function？
-        if (isa<Function>(pointer)) {
-            pointToSet[pointerOp] = {valueOp};
-       } else {
-            pointToSet[pointer] = possibleValues;
-       }
+     errs() << "<<<<<<<<<<<\n";
+     //#endif
+     if (possiblePointers.size() == 1){
+       Value *pointer = *possiblePointers.begin();
+       pointToSet[pointer] = possibleValues;
        return;
      }
      for (Value *pointer : possiblePointers){
@@ -130,31 +124,21 @@ public:
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
 
      PointToSetType &pointToSet = dfval->PointToSet;
-     //#ifdef DEBUG
-     errs() << "========load begin=========\n";
-     pointerOp->dump();
-     errs() << possiblePointers.size() <<"\n";
-     errs() << "========load end===========\n";
-     //#endif
+
      for (Value *pointer : possiblePointers){
-         ValueSetType possibleValues = {};
-        #ifdef DEBUG
-        errs() << "========load111 begin=========\n";
-        pointer->dump();
-        errs() << "========load111 begin=========\n";
-       #endif
-       if (isa<Function>(pointer)) {
-           possibleValues = {pointer};
-       } else {
-          possibleValues  = pointToSet[pointer];
-       } 
-       //pointer->dump();
-       //ValueSetType possibleValues = dfval->getPossibleValues(pointer);
+       ValueSetType possibleValues = dfval->getPossibleValues(pointer);
        pointToSet[loadInst].insert(possibleValues.begin(), possibleValues.end());
      }
    }
 
   void computeAllocaInst(AllocaInst *allocaInst, PointerSetInfo *dfval) {
+  }
+
+  void computeBitCastInst(BitCastInst *bitCastInst, PointerSetInfo *dfval){
+    //bitCastInst->dump();
+    Value *valueOp = bitCastInst->getOperand(0);
+    ValueSetType possibleValues = dfval->getPossibleValues(valueOp);
+    (*dfval)[bitCastInst] = possibleValues; 
   }
 
    void computeGetElementPtrInst(GetElementPtrInst* getElementPtrInst, PointerSetInfo* dfval) {
@@ -183,11 +167,11 @@ public:
                 }
                    
             } else {
-                //#ifdef DEBUG 
+                #ifdef DEBUG 
                 errs()<<"=======arg else begin======"<<"\n";
                 U.get()->dump();
                 errs()<<"=======arg else end======"<<"\n";
-                //#endif
+                #endif
                 if (dfval->PointToSet.count(U.get()) != 0) {
                     ValueSetType pointSet = dfval->PointToSet[U.get()];
                     //(*pointSet.begin())->dump();
@@ -213,8 +197,12 @@ public:
                return;
            }
            std::set<Function* > funcSet = {func};
-           functionWorkList.insert(func);
            finalResult.insert(std::make_pair(callInst, funcSet));
+           if (func->getName() == "malloc"){
+             (*dfval)[callInst] = {callInst};
+             return;
+           }
+           functionWorkList.insert(func);
            if (callfunction.count(func) == 0) {
                callfunction[func] = {callInst};
            } else {
@@ -296,6 +284,7 @@ public:
    
    void compDFVal(Instruction *inst, PointerSetInfo * dfval) override{
         if (isa<DbgInfoIntrinsic>(inst)) return;
+        errs() << ">>>>>>>>>>\t";
         inst->dump();
         if (PHINode* phiNode = dyn_cast<PHINode>(inst)) {
             #ifdef DEBUG
@@ -329,6 +318,8 @@ public:
             computeGetElementPtrInst(getElementPtrInst, dfval);
         } else if (AllocaInst *allocaInst = dyn_cast<AllocaInst>(inst)){
           computeAllocaInst(allocaInst, dfval);
+        } else if (BitCastInst *bitCastInst = dyn_cast<BitCastInst>(inst)) {
+          computeBitCastInst(bitCastInst, dfval);
         } else {
             #ifdef DEBUG
                 errs() << inst->getName() << "\n";
