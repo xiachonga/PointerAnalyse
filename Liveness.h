@@ -21,12 +21,14 @@
 
 #include <set>
 #include <map>
-using namespace llvm;
 
-using ValueSetType = std::set<Value *>;
-using PointToSetType = std::map<Value *, ValueSetType>;
-using ValueValuesMapType = std::map<Value *, ValueSetType>;
-using Functions = std::set<Function *>;
+using namespace llvm;
+using namespace std;
+
+using ValueSetType = set<Value *>;
+using PointToSetType = map<Value *, ValueSetType>;
+using ValueValuesMapType = map<Value *, ValueSetType>;
+using Functions = set<Function *>;
 
 // #define INST
 // #define FUNC
@@ -94,12 +96,12 @@ inline raw_ostream &operator<<(raw_ostream &out, const PointerSetInfo &info)
 class PointToSetVisitor : public DataflowVisitor<struct PointerSetInfo>
 {
 private:
-    std::set<Function *> functionWorkList;
-    std::map<CallInst *, std::set<Function *>> finalResult;
+    set<Function *> functionWorkList;
+    map<CallInst *, set<Function *>> finalResult;
 
-    std::map<Function *, PointerSetInfo> functionArgPointSet;
-    std::map<Function *, PointerSetInfo> functionRetPointSet;
-    std::map<Function *, std::set<Function *>> functionRetWakeupFunctions;
+    map<Function *, PointerSetInfo> functionArgPointSet;
+    map<Function *, PointerSetInfo> functionRetPointSet;
+    map<Function *, set<Function *>> functionRetWakeupFunctions;
 
     void dumpValue(Value *V)
     {
@@ -116,37 +118,31 @@ private:
 
 public:
     PointToSetVisitor() : functionWorkList() {}
-    std::set<Function *> &getFunctionWorkList()
+    set<Function *> &getFunctionWorkList()
     {
         return functionWorkList;
     }
-    void setFunctionWorkList(std::set<Function *> func)
+    void setFunctionWorkList(set<Function *> func)
     {
         this->functionWorkList = func;
     }
-    std::map<Function *, PointerSetInfo> &getFunctionArgPointSet()
+    map<Function *, PointerSetInfo> &getFunctionArgPointSet()
     {
         return functionArgPointSet;
     }
-    std::map<CallInst *, std::set<Function *>> getFinalResult()
+    map<CallInst *, set<Function *>> getFinalResult()
     {
         return finalResult;
     }
 
     void merge(PointerSetInfo *dest, const PointerSetInfo &src) override
     {
-        for (auto iter = src.PointToSet.begin(); iter != src.PointToSet.end(); ++iter)
+        for (pair<Value *, ValueSetType> temp : src.PointToSet)
         {
-            if (dest->PointToSet.find(iter->first) != dest->PointToSet.end())
-            {
-                dest->PointToSet[iter->first].insert(iter->second.begin(), iter->second.end());
-            }
-            else
-            {
-                dest->PointToSet.insert(std::make_pair(iter->first, iter->second));
-            }
+            dest->PointToSet[temp.first].insert(temp.second.begin(), temp.second.end());
         }
     }
+
     void computePhiNode(PHINode *phiNode, PointerSetInfo &info)
     {
         for (Use &U : phiNode->incoming_values())
