@@ -263,7 +263,12 @@ public:
             {
                 Value *V = U.get();
                 Argument *arg = func->getArg(argc);
-                addArgument(newInfo, info, arg, info.getPossibleValues(V));
+                ValueSetType possibleValues = info.getPossibleValues(V);
+                newInfo[arg].insert(possibleValues.begin(), possibleValues.end());
+                for (Value *pointer : possibleValues)
+                {
+                    movePointerSetInfo(newInfo, info, pointer);
+                }
                 argc++;
             }
             if (newInfo == functionArgPointSet[func])
