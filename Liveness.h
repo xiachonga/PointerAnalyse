@@ -101,9 +101,6 @@ private:
     std::map<Function *, PointerSetInfo> functionRetPointSet;
     std::map<Function *, std::set<Function *>> functionRetWakeupFunctions;
 
-    // std::map<Function *, std::set<CallInst *>> callfunction;
-    // PointToSetType returnPointSet;
-
     void dumpValue(Value *V)
     {
         if (Function *F = dyn_cast<Function>(V))
@@ -170,9 +167,6 @@ public:
         {
             Value *pointer = *possiblePointers.begin();
             info[pointer] = possibleValues;
-            // dumpValue(pointer);
-            // for (auto temp : possibleValues)
-            //     dumpValue(temp);
             return;
         }
         for (Value *pointer : possiblePointers)
@@ -212,33 +206,13 @@ public:
                 }
             }
         }
-        else if (isa<AllocaInst>(valueOp))
-        {
-            info[bitCastInst] = {valueOp};
-            return;
-        }
-        else if (isa<BitCastInst>(valueOp))
-        {
-            info[bitCastInst] = info.getPossibleValues(valueOp);
-            return;
-        }
-        bitCastInst->dump();
-        valueOp->dump();
-        errs() << "BitCast!!!!\n";
-        assert(0 && ">>>>> computeBitCastInst: operand not a malloc value or allocaInst!");
+        info[bitCastInst] = info.getPossibleValues(valueOp);
     }
 
     void computeGetElementPtrInst(GetElementPtrInst *getElementPtrInst, PointerSetInfo &info)
     {
         Value *pointerOp = getElementPtrInst->getPointerOperand();
         info[getElementPtrInst] = info.getPossibleValues(pointerOp);
-        // for (Value *V : info.getPossibleValues(pointerOp))
-        // {
-        //     if (Instruction *inst = dyn_cast<Instruction>(V))
-        //         errs() << inst->getParent()->getParent()->getName();
-        //     V->dump();
-        // }
-        // errs() << "!!!!!\n";
     }
 
     void addArgument(PointerSetInfo &argsInfo, PointerSetInfo &currentInfo, Value *arg, ValueSetType possibleValues)
@@ -271,23 +245,7 @@ public:
 
     void computeCallInst(CallInst *callInst, PointerSetInfo &info)
     {
-        // errs() << ">> Call\t";
-        // callInst->dump();
         Value *value = callInst->getCalledValue();
-        // if (isa<Argument>(value))
-        // {
-        //     errs() << "Call Value is An argument!\t";
-        // }
-        // if (!isa<Function>(value))
-        // {
-        //     errs() << "Call Values\n";
-        //     value->dump();
-        //     for (Value *temp : info.getPossibleValues(value))
-        //     {
-
-        //         temp->dump();
-        //     }
-        // }
         Functions possibleFunctions = info.getPossibleFuntcions(value);
         // deal with call
         for (Function *func : possibleFunctions)
@@ -309,20 +267,6 @@ public:
             {
                 Value *V = U.get();
                 Argument *arg = func->getArg(argc);
-                // errs() << ">> arg " << argc << "\n";
-                // arg->dump();
-                // V->dump();
-                // for (Value *temp : info.getPossibleValues(V))
-                // {
-                //     if (Function *f = dyn_cast<Function>(temp))
-                //     {
-                //         errs() << "Function " << f->getName() << "\n";
-                //     }
-                //     else
-                //     {
-                //         temp->dump();
-                //     }
-                // }
                 addArgument(newInfo, info, arg, info.getPossibleValues(V));
                 argc++;
             }
@@ -331,7 +275,6 @@ public:
             functionArgPointSet[func] = newInfo;
             functionWorkList.insert(func);
         }
-        // errs() << "\n";
         // Deal with return
         for (Function *func : possibleFunctions)
         {
@@ -344,40 +287,16 @@ public:
                 movePointerSetInfo(info, functionRetPointSet[func], pointer);
             }
             // pointer arguments
-            // errs() << ">> Repointer argument with " << func->getName() << "\n";
             int argc = 0;
             for (Use &U : callInst->args())
             {
                 Value *V = U.get();
-                // Argument *arg = func->getArg(argc);
-                // errs() << ">> arg " << argc << "\n";
-                // arg->dump();
                 for (Value *pointer : info.getPossibleValues(V))
                 {
                     movePointerSetInfo(info, functionRetPointSet[func], pointer);
-                    // errs() << functionRetPointSet[func][pointer].size() << "\n";
-                    // for (Value *tempv : functionRetPointSet[func][pointer])
-                    // {
-                    //     if (Function *tempf = dyn_cast<Function>(tempv))
-                    //         errs() << "Function " << tempf->getName() << "\n";
-                    //     else
-                    //         tempv->dump();
-                    // }
                 }
                 argc++;
             }
-            // for (size_t argc = 0; argc < func->arg_size(); argc++)
-            // {
-            //     Argument *arg = func->getArg(argc);
-            //     errs() << ">> arg " << argc << "\n";
-            //     arg->dump();
-            //     ValueSetType possibleValues = info.getPossibleValues(arg);
-            //     for (Value *pointer : possibleValues)
-            //     {
-
-            //         movePointerSetInfo(info, functionRetPointSet[func], pointer);
-            //     }
-            // }
         }
     }
 
@@ -406,17 +325,6 @@ public:
         // Wakeup
         functionWorkList.insert(functionRetWakeupFunctions[parent].begin(), functionRetWakeupFunctions[parent].end());
         functionRetPointSet[parent] = newInfo;
-        // for (auto p : functionRetPointSet[parent].PointToSet)
-        // {
-        //     errs() << "Pointer\n";
-        //     dumpValue(p.first);
-        //     errs() << "Values\n";
-        //     for (auto v : p.second)
-        //     {
-        //         dumpValue(v);
-        //     }
-        //     errs() << "\n";
-        // }
     }
 
     void compDFVal(Instruction *inst, PointerSetInfo *dfval) override
@@ -445,7 +353,7 @@ public:
             computeCallInst(callInst, info);
         }
         else if (ReturnInst *returnInst = dyn_cast<ReturnInst>(inst))
-        { // call 和 return都会令目标基本块的值发生改变，现在还没想好怎么弄
+        {
             computeReturnInst(returnInst, info);
         }
         else if (GetElementPtrInst *getElementPtrInst = dyn_cast<GetElementPtrInst>(inst))
