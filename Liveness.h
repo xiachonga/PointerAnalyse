@@ -89,8 +89,10 @@ public:
       PointToSetType &pointToSet = dfval->PointToSet;
       for (Use &U : phiNode->incoming_values()) {
           ValueSetType possibleValues = dfval->getPossibleValues(U.get());
+          #ifdef DEBUG
           if (possibleValues.size() != 0)
           (*possibleValues.begin())->dump();
+          #endif
           (*dfval)[phiNode].insert(possibleValues.begin(), possibleValues.end());
 		  }
    }
@@ -109,28 +111,11 @@ public:
      pointerOp->dump();
      errs() <<possibleValues.size()<<"\n";
      errs() <<possiblePointers.size()<<"\n";
-<<<<<<< HEAD
-     errs() << "==========store end===========\n";
-     #endif
-     if (possiblePointers.size() == 0) {
-       pointToSet[pointerOp] = possibleValues;
-       if (GetElementPtrInst* getElementPtrInst = dyn_cast<GetElementPtrInst>(pointerOp)) {
-           pointToSet[getElementPtrInst->getPointerOperand()] = possibleValues;
-       }
-     } else if (possiblePointers.size() == 1){
-       Value *pointer = *possiblePointers.begin(); //pointer指向的可能直接就是Function？
-        if (isa<Function>(pointer)) {
-            pointToSet[pointerOp] = {valueOp};
-       } else {
-            pointToSet[pointer] = possibleValues;
-       }
-=======
      errs() << "<<<<<<<<<<<\n";
      //#endif
      if (possiblePointers.size() == 1){
        Value *pointer = *possiblePointers.begin();
        pointToSet[pointer] = possibleValues;
->>>>>>> origin/zzc
        return;
      }
      for (Value *pointer : possiblePointers){
@@ -143,18 +128,8 @@ public:
      ValueSetType possiblePointers = dfval->getPossibleValues(pointerOp);
 
      PointToSetType &pointToSet = dfval->PointToSet;
-<<<<<<< HEAD
-     #ifdef DEBUG
-     errs() << "========load begin=========\n";
-     pointerOp->dump();
-     errs() << possiblePointers.size() <<"\n";
-     errs() << "========load end===========\n";
-     #endif
-=======
-
->>>>>>> origin/zzc
      for (Value *pointer : possiblePointers){
-       ValueSetType possibleValues = dfval->getPossibleValues(pointer);
+       ValueSetType possibleValues = (*dfval)[pointer];
        pointToSet[loadInst].insert(possibleValues.begin(), possibleValues.end());
      }
    }
@@ -207,7 +182,7 @@ public:
                 #endif
                 if (dfval->PointToSet.count(U.get()) != 0) {
                     ValueSetType pointSet = dfval->PointToSet[U.get()];
-                    //(*pointSet.begin())->dump();
+                    errs()<<dfval->PointToSet[(*pointSet.begin())].size()<<"\n";
                     Argument * arg = func->getArg(i);
                     if (functionArgPointSet.count(func) == 0) { //add {func, {arg, {funcArg}}}
                         PointerSetInfo info;
