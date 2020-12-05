@@ -46,10 +46,14 @@ struct PointerSetInfo
 
     inline ValueSetType getPossibleValues(Value *V)
     {
-        // FIX ME
-        // add what malloc as what allocaInst do?
         if (isa<Function>(V) || isa<AllocaInst>(V))
             return {V};
+        if (CallInst *callInst = dyn_cast<CallInst>(V))
+            if (Function *func = dyn_cast<Function>(callInst->getCalledValue()))
+                if (func->getName() == "malloc")
+                {
+                    return {V};
+                }
         return PointToSet[V];
     }
 
@@ -76,8 +80,20 @@ struct PointerSetInfo
 
     ValueSetType &operator[](Value *V)
     {
-
         return PointToSet[V];
+    }
+
+    ValueSetType getPossiblePointedValues(Value *V)
+    {
+        if (BBStoreMap.count(V))
+            return PointToSet[BBStoreMap[V]];
+        ValueSetType possiblePointers = getPossibleValues(V);
+        ValueSetType possiblePointedValues;
+        for (Value *pointer : possiblePointers)
+        {
+            possiblePointedValues.insert(PointToSet[pointer].begin(), PointToSet[pointer].end());
+        }
+        return possiblePointedValues;
     }
 
     bool count(Value *V)
@@ -90,11 +106,6 @@ struct PointerSetInfo
         return PointToSet == info.PointToSet;
     }
 };
-
-inline raw_ostream &operator<<(raw_ostream &out, const PointerSetInfo &info)
-{
-    return out;
-}
 
 class PointToSetVisitor : public DataflowVisitor<struct PointerSetInfo>
 {
@@ -162,15 +173,11 @@ public:
         }
     }
 
-    void computeStoreInst(StoreInst *storeInst, PointerSetInfo &info)
+    void store(Value *inst, PointerSetInfo &info, Value *pointerOp, ValueSetType &possibleValues)
     {
-        Value *valueOp = storeInst->getValueOperand();
-        ValueSetType possibleValues = info.getPossibleValues(valueOp);
-        Value *pointerOp = storeInst->getPointerOperand();
+        info.BBStoreMap[pointerOp] = inst;
+        info[inst] = possibleValues;
         ValueSetType possiblePointers = info.getPossibleValues(pointerOp);
-        // TODO
-        info.BBStoreMap[pointerOp] = storeInst;
-        info[storeInst] = possibleValues;
         if (possiblePointers.size() == 1)
         {
             Value *pointer = *possiblePointers.begin();
@@ -179,81 +186,37 @@ public:
         }
         for (Value *pointer : possiblePointers)
         {
+            if (info.BBStoreMap.count(pointer))
+                info.BBStoreMap.erase(pointer);
             info[pointer].insert(possibleValues.begin(), possibleValues.end());
         }
+    }
 
+    void computeStoreInst(StoreInst *storeInst, PointerSetInfo &info)
+    {
+        Value *valueOp = storeInst->getValueOperand();
+        ValueSetType possibleValues = info.getPossibleValues(valueOp);
+        Value *pointerOp = storeInst->getPointerOperand();
+        store(storeInst, info, pointerOp, possibleValues);
     }
 
     void computeLoadInst(LoadInst *loadInst, PointerSetInfo &info)
     {
         Value *pointerOp = loadInst->getPointerOperand();
-        ValueSetType possiblePointers = info.getPossibleValues(pointerOp);
-        if (info.BBStoreMap.count(pointerOp))
-        {
-            Value *storeOrMemcpyInst = info.BBStoreMap[pointerOp];
-            info[loadInst] = info[storeOrMemcpyInst];
-            return;
-        }
-
-        for (Value *pointer : possiblePointers)
-        {
-            ValueSetType possibleValues = info[pointer];
-            info[loadInst].insert(possibleValues.begin(), possibleValues.end());
-       
-        }
+        info[loadInst] = info.getPossiblePointedValues(pointerOp);
     }
 
     void computeMemCpyInst(MemCpyInst *memCpyInst, PointerSetInfo &info)
     {
         Value *dst = memCpyInst->getArgOperand(0);
         Value *src = memCpyInst->getArgOperand(1);
-        ValueSetType srcPossiblePointers = info.getPossibleValues(src);
-        ValueSetType possibleValues;
-        if (info.BBStoreMap.count(src))
-        {
-            Value *storeOrMemcpyInst = info.BBStoreMap[src];
-            possibleValues = info[storeOrMemcpyInst];
-        }
-        else
-        {
-            for (Value *pointer : srcPossiblePointers)
-            {
-                possibleValues.insert(info[pointer].begin(), info[pointer].end());
-            }
-        }
-        ValueSetType dstPossiblePointers = info.getPossibleValues(dst);
-        info.BBStoreMap[dst] = memCpyInst;
-        info[memCpyInst] = possibleValues;
-        if (dstPossiblePointers.size() == 1)
-        {
-            Value *pointer = *dstPossiblePointers.begin();
-            info[pointer] = possibleValues;
-            return;
-        }
-        for (Value *pointer : dstPossiblePointers)
-        {
-            info[pointer].insert(possibleValues.begin(), possibleValues.end());
-        }
+        ValueSetType possibleValues = info.getPossiblePointedValues(src);
+        store(memCpyInst, info, dst, possibleValues);
     }
 
     void computeBitCastInst(BitCastInst *bitCastInst, PointerSetInfo &info)
     {
         Value *valueOp = bitCastInst->getOperand(0);
-        ValueSetType possibleValues = info.getPossibleValues(valueOp);
-        if (CallInst *callInst = dyn_cast<CallInst>(valueOp))
-        {
-            if (Function *fmalloc = dyn_cast<Function>(callInst->getCalledValue()))
-            {
-                if (fmalloc->getName() == "malloc")
-                {
-                    // FIX ME
-                    // just use the callinst as the malloc return value
-                    // in llvm, we can create "malloc" IR with createMalloc in class CallInst
-                    info[bitCastInst] = {valueOp};
-                    return;
-                }
-            }
-        }
         info[bitCastInst] = info.getPossibleValues(valueOp);
     }
 
@@ -261,17 +224,6 @@ public:
     {
         Value *pointerOp = getElementPtrInst->getPointerOperand();
         info[getElementPtrInst] = info.getPossibleValues(pointerOp);
-    }
-
-    void addArgument(PointerSetInfo &argsInfo, PointerSetInfo &currentInfo, Value *arg, ValueSetType possibleValues)
-    {
-        argsInfo[arg].insert(possibleValues.begin(), possibleValues.end());
-        for (Value *value : possibleValues)
-        {
-            if (value == arg)
-                continue;
-            addArgument(argsInfo, currentInfo, value, currentInfo[value]);
-        }
     }
 
     void movePointerSetInfo(PointerSetInfo &dst, PointerSetInfo &src, Value *pointer, bool replace = false)
@@ -305,8 +257,6 @@ public:
             // Add function to result
             finalResult[callInst].insert(func);
             functionRetWakeupFunctions[func].insert(callInst->getParent()->getParent());
-            // FIX ME
-            // We must get a return value from malloc, just use callinst, do it specilly in computeBitCastInst?
             if (func->getName() == "malloc")
                 return;
             // add argument
