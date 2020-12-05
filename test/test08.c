@@ -31,5 +31,5 @@ void foo(int x)
 	x=a_fptr.p_fptr(1,x);
 }
 
-//25 : plus
-//31 : minus
+// 25 : plus
+// 31 : minus

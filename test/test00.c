@@ -28,7 +28,7 @@ int moo(char x)
     return 0;
 }
 
-//14 : plus, minus
-//24 : foo
-//27 : foo
+// 14 : plus, minus
+// 24 : foo
+// 27 : foo
 

@@ -33,7 +33,8 @@
 #include "Liveness.h"
 #include "Dataflow.h"
 
-#define DEBUG
+//#define DEBUG
+
 using namespace llvm;
 static ManagedStatic<LLVMContext> GlobalContext;
 static LLVMContext &getGlobalContext() { return *GlobalContext; }
@@ -71,11 +72,23 @@ struct FuncPtrPass : public ModulePass {
        while (!functionWorkList.empty()) {
             Function* F = *(functionWorkList.begin());
             functionWorkList.erase(F);
-            std::map<Function*, PointerSetInfo> funcArgPointSet = visitor.getFunctionArgPointSet();
+            if (F->getName() == "malloc") continue;
+            std::map<Function*, PointerSetInfo> &funcArgPointSet = visitor.getFunctionArgPointSet();
             if (funcArgPointSet.count(F)) {
                 initval = funcArgPointSet[F];
             }
+#ifdef FUNC
+            errs() << ">>>>> Dealing " << F->getName() << "\n";
+#endif
             compForwardDataflow(F, &visitor, &result, initval); // initval是否还需要根据需要修改？
+#ifdef FUNC
+            errs() << "<<<<< Finish  " << F->getName() << " : " << visitor.getFunctionWorkList().size();
+            for (Function *temp : visitor.getFunctionWorkList())
+            {
+                errs() << " " << temp->getName();
+            }
+            errs() << "\n\n\n";
+#endif
             functionWorkList.insert(visitor.getFunctionWorkList().begin(), visitor.getFunctionWorkList().end());
             std::set<Function* > funcSet = {};
             visitor.setFunctionWorkList(funcSet);
